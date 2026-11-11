@@ -1,0 +1,32 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm install
+      - name: Build installer
+        run: npx tauri build --bundles nsis
+        env:
+          OMNISTORE_GOOGLE_CLIENT_ID: ${{ secrets.OMNISTORE_GOOGLE_CLIENT_ID }}
+          OMNISTORE_GOOGLE_CLIENT_SECRET: ${{ secrets.OMNISTORE_GOOGLE_CLIENT_SECRET }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OmniStore-windows
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/*.exe

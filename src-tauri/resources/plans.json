@@ -1,0 +1,33 @@
+{
+  "currency": "EUR",
+  "region": "GR",
+  "updated": "2026-11-11",
+  "providers": {
+    "icloud": {
+      "name": "iCloud+",
+      "manageUrl": "https://www.icloud.com/settings/",
+      "source": "https://support.apple.com/en-gr/108047 (Euro row, published 2026-09-16)",
+      "tiers": [
+        { "id": "icloud-free", "name": "iCloud Free 5 GB", "gb": 5, "monthlyEur": 0, "verified": true },
+        { "id": "icloud-50", "name": "iCloud+ 50 GB", "gb": 50, "monthlyEur": 0.99, "verified": true },
+        { "id": "icloud-200", "name": "iCloud+ 200 GB", "gb": 200, "monthlyEur": 2.99, "verified": true },
+        { "id": "icloud-2t", "name": "iCloud+ 2 TB", "gb": 2000, "monthlyEur": 9.99, "verified": true },
+        { "id": "icloud-6t", "name": "iCloud+ 6 TB", "gb": 6000, "monthlyEur": 29.99, "verified": true },
+        { "id": "icloud-12t", "name": "iCloud+ 12 TB", "gb": 12000, "monthlyEur": 59.99, "verified": true }
+      ]
+    },
+    "google": {
+      "name": "Google One",
+      "manageUrl": "https://one.google.com/storage",
+      "source": "Prices not yet verified for GR. Confirm on https://one.google.com/about/plans and set verified=true",
+      "tiers": [
+        { "id": "google-free", "name": "Google Free 15 GB", "gb": 15, "monthlyEur": 0, "verified": true },
+        { "id": "google-100", "name": "Google One Basic 100 GB", "gb": 100, "monthlyEur": 1.99, "verified": false },
+        { "id": "google-200", "name": "Google One Standard 200 GB", "gb": 200, "monthlyEur": 2.99, "verified": false },
+        { "id": "google-2t", "name": "Google One Premium 2 TB", "gb": 2000, "monthlyEur": 9.99, "verified": false },
+        { "id": "google-ai-pro", "name": "Google AI Pro 2 TB", "gb": 2000, "monthlyEur": 21.99, "verified": false, "bundle": true },
+        { "id": "google-ai-ultra", "name": "Google AI Ultra 30 TB", "gb": 30000, "monthlyEur": 274.99, "verified": false, "bundle": true }
+      ]
+    }
+  }
+}
