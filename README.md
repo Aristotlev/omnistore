@@ -27,7 +27,11 @@ Double-click **Publish OmniStore.cmd**. It:
 | Apple | Signs in once on Apple's own icloud.com page inside OmniStore (passkey QR with iPhone, iPhone approval, or password + code) | Plan, usage by category, over-quota status, Apple devices on the account |
 | Google | Clicks Continue with Google, picks their account in the browser (passkey or already signed in), clicks Continue | Storage plan, total, Drive, Drive trash, Gmail + Photos combined |
 
-## Device sync
+## Devices
+
+iPhone and iPad are read from the PC or Mac over USB, or Wi-Fi after the first plug-in, through Apple's device service (Apple Devices app on Windows, built into macOS). Nothing is installed on them. OmniStore reads capacity, free space, every app's size and the photos, videos and screenshots on the device. Macs need OmniStore installed (Apple exposes no remote disk info).
+
+### Sync
 
 Each install writes a small snapshot to `iCloud Drive\OmniStore\Devices` (or OneDrive). The user's own sync app carries it to their other devices. No server.
 

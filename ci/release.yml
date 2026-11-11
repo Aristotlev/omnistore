@@ -9,14 +9,26 @@ permissions:
   contents: write
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: --bundles nsis
+            targets: ""
+          - platform: macos-latest
+            args: --target universal-apple-darwin --bundles app,dmg
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
@@ -31,7 +43,8 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: OmniStore v__VERSION__
-          releaseBody: "Download the OmniStore_..._x64-setup.exe file below to install. Installed copies update themselves."
+          releaseBody: "Windows: download OmniStore_..._x64-setup.exe. Mac: download OmniStore_..._universal.dmg. Installed copies update themselves."
           releaseDraft: false
           prerelease: false
-          args: --bundles nsis
+          retryAttempts: 3
+          args: ${{ matrix.args }}

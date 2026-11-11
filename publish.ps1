@@ -118,14 +118,16 @@ Log "Building v$version on GitHub (run $runId). About 10 minutes..."
 gh run watch $runId -R $repo --exit-status --interval 20
 if ($LASTEXITCODE -ne 0) {
   gh run view $runId -R $repo --log-failed | Out-File $errFile -Encoding utf8
-  Fail 'Build failed. Details in build-error.txt'
+  Log 'Part of the build failed. Details in build-error.txt'
 }
 
 $dest = Join-Path ([Environment]::GetFolderPath('Desktop')) 'OmniStore'
 New-Item -ItemType Directory -Force $dest | Out-Null
 gh release download "v$version" -R $repo -p '*-setup.exe' -D $dest --clobber
 $setup = Get-ChildItem $dest -Filter "*$version*-setup.exe" | Select-Object -First 1
-if (-not $setup) { Fail 'Installer not found in the release' }
+if (-not $setup) { Fail 'Windows installer not found in the release. Details in build-error.txt' }
+$dmg = gh release view "v$version" -R $repo --json assets --jq '.assets[].name' | Select-String '\.dmg$'
+if ($dmg) { Log "Mac download: https://github.com/$repo/releases/download/v$version/$dmg" } else { Log 'Mac build not in this release (see build-error.txt)' }
 Log "Released v$version. Download page for users: https://github.com/$repo/releases/latest"
 
 # Update the copy installed on this PC: close it, install silently, reopen it.

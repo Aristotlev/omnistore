@@ -1,5 +1,6 @@
 mod google;
 mod icloud;
+mod ios;
 mod local;
 mod model;
 mod plans;
@@ -105,13 +106,19 @@ fn save_settings(state: State<'_, AppState>, input: SettingsInput) -> Settings {
 #[tauri::command]
 async fn scan_local(app: AppHandle) -> Res<Dashboard> {
     let settings = app.state::<AppState>().settings();
-    let (report, device, sync) = tauri::async_runtime::spawn_blocking(move || {
-        let (report, device) = local::scan(&settings);
-        let sync = local::sync_devices(&device);
-        (report, device, sync)
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    let (mut report, device) = tauri::async_runtime::spawn_blocking(move || local::scan(&settings))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // iPhone / iPad plugged in or on the same Wi-Fi: read them from here, no app needed on them.
+    let phones = ios::scan().await;
+    report.ios_status = phones.status.clone();
+    report.ios_errors = phones.errors.clone();
+
+    let publish: Vec<DeviceSnapshot> = std::iter::once(device.clone()).chain(phones.devices.iter().cloned()).collect();
+    let sync = tauri::async_runtime::spawn_blocking(move || local::sync_devices(&publish))
+        .await
+        .map_err(|e| e.to_string())?;
     {
         let state = app.state::<AppState>();
         let mut d = state.dashboard.lock().unwrap();
@@ -119,6 +126,9 @@ async fn scan_local(app: AppHandle) -> Res<Dashboard> {
         d.this_device = Some(device);
         d.sync_folder = sync.0;
         merge_devices(&mut d, "OmniStore sync", sync.1);
+        // Keep the last reading of phones that are not connected right now.
+        d.devices.retain(|x| !phones.devices.iter().any(|p| p.id == x.id));
+        d.devices.extend(phones.devices);
     }
     Ok(commit(&app))
 }
@@ -168,12 +178,17 @@ async fn icloud_disconnect(app: AppHandle) -> Res<Dashboard> {
 async fn google_pull(app: &AppHandle) -> Res<()> {
     let token = google::access_token().await?;
     let account = google::fetch_account(&token).await?;
-    let this = app.state::<AppState>().dashboard.lock().unwrap().this_device.clone();
-    let others = match this {
-        Some(t) => google::sync_devices(&token, &t).await.unwrap_or_default(),
-        None => vec![],
-    };
+    // This computer plus every iPhone/iPad it has read.
     let state = app.state::<AppState>();
+    let publish: Vec<DeviceSnapshot> = {
+        let d = state.dashboard.lock().unwrap();
+        d.this_device
+            .iter()
+            .cloned()
+            .chain(d.devices.iter().filter(|x| x.source == "Read over USB / Wi-Fi").cloned())
+            .collect()
+    };
+    let others = if publish.is_empty() { vec![] } else { google::sync_devices(&token, &publish).await.unwrap_or_default() };
     let mut d = state.dashboard.lock().unwrap();
     d.google = Some(account);
     merge_devices(&mut d, "Google sync", others);

@@ -33,7 +33,16 @@ export interface DeviceSnapshot {
   volumes: Volume[];
   source: string;
   updatedAt: string;
+  breakdown?: UsageSlice[];
+  topApps?: AppUsage[];
+  media?: MediaStats | null;
+  cloud?: CloudLink[];
+  connection?: string | null;
 }
+
+export interface AppUsage { name: string; bundleId: string; appBytes: number; dataBytes: number }
+export interface MediaStats { photos: number; photosBytes: number; videos: number; videosBytes: number; screenshots: number; screenshotsBytes: number; estimated: boolean }
+export interface CloudLink { name: string; detail: string; localBytes: number; cloudBytes: number }
 
 export interface PhysicalDisk { name: string; mediaType: string; busType: string; health: string; sizeBytes: number }
 export interface SyncClient { id: string; name: string; installed: boolean; syncRoot?: string | null; localBytes: number; cloudOnlyBytes: number; cacheBytes: number; fileCount: number }
@@ -48,6 +57,8 @@ export interface LocalReport {
   iosBackups: IosBackup[];
   appleUsbDevices: string[];
   scannedAt: string;
+  iosStatus?: string;
+  iosErrors?: string[];
 }
 
 export interface FileEntry { path: string; bytes: number; modified?: string | null; cloudOnly: boolean }

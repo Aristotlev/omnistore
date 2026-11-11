@@ -234,10 +234,10 @@ pub fn parse_account(a: &Value) -> CloudAccount {
 const FILES_URL: &str = "https://www.googleapis.com/drive/v3/files";
 const UPLOAD_URL: &str = "https://www.googleapis.com/upload/drive/v3/files";
 
-/// Every OmniStore signed in to the same Google account keeps a small device snapshot in
+/// Every OmniStore signed in to the same Google account keeps small device snapshots in
 /// OmniStore's hidden app folder in Google Drive (invisible in Drive, only OmniStore can read it).
-/// Uploads this device and returns all the others.
-pub async fn sync_devices(token: &str, this: &DeviceSnapshot) -> Result<Vec<DeviceSnapshot>, String> {
+/// Uploads `publish` (this computer plus any iPhone/iPad it read) and returns everything else.
+pub async fn sync_devices(token: &str, publish: &[DeviceSnapshot]) -> Result<Vec<DeviceSnapshot>, String> {
     let c = http();
     let list: Value = c
         .get(FILES_URL)
@@ -250,38 +250,44 @@ pub async fn sync_devices(token: &str, this: &DeviceSnapshot) -> Result<Vec<Devi
         .await
         .map_err(|e| e.to_string())?;
     let files = list["files"].as_array().cloned().unwrap_or_default();
-    let mine = format!("device-{}.json", this.id);
-    let body = serde_json::to_vec(this).map_err(|e| e.to_string())?;
+    let mine: Vec<String> = publish.iter().map(|d| format!("device-{}.json", d.id)).collect();
 
-    let file_id = match files.iter().find(|f| f["name"].as_str() == Some(mine.as_str())).and_then(|f| f["id"].as_str()) {
-        Some(id) => id.to_string(),
-        None => {
-            let created: Value = c
-                .post(FILES_URL)
-                .bearer_auth(token)
-                .json(&serde_json::json!({ "name": mine, "parents": ["appDataFolder"], "mimeType": "application/json" }))
-                .send()
-                .await
-                .map_err(|e| e.to_string())?
-                .json()
-                .await
-                .map_err(|e| e.to_string())?;
-            created["id"].as_str().ok_or("Could not save this device to Google")?.to_string()
-        }
-    };
-    c.patch(format!("{UPLOAD_URL}/{file_id}"))
-        .query(&[("uploadType", "media")])
-        .bearer_auth(token)
-        .header("Content-Type", "application/json")
-        .body(body)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    for (dev, name) in publish.iter().zip(mine.iter()) {
+        let body = serde_json::to_vec(dev).map_err(|e| e.to_string())?;
+        let existing = files.iter().find(|f| f["name"].as_str() == Some(name.as_str())).and_then(|f| f["id"].as_str()).map(String::from);
+        let file_id = match existing {
+            Some(id) => id,
+            None => {
+                let created: Value = c
+                    .post(FILES_URL)
+                    .bearer_auth(token)
+                    .json(&serde_json::json!({ "name": name, "parents": ["appDataFolder"], "mimeType": "application/json" }))
+                    .send()
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .json()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                match created["id"].as_str() {
+                    Some(id) => id.to_string(),
+                    None => continue,
+                }
+            }
+        };
+        let _ = c
+            .patch(format!("{UPLOAD_URL}/{file_id}"))
+            .query(&[("uploadType", "media")])
+            .bearer_auth(token)
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send()
+            .await;
+    }
 
     let mut others = vec![];
     for f in &files {
         let name = f["name"].as_str().unwrap_or("");
-        if !name.starts_with("device-") || name == mine {
+        if !name.starts_with("device-") || mine.iter().any(|m| m == name) {
             continue;
         }
         let Some(id) = f["id"].as_str() else { continue };

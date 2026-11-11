@@ -32,6 +32,8 @@ sha2 = "0.10"
 base64 = "0.22"
 rand = "0.8"
 url = "2"
+# iPhone / iPad over USB or Wi-Fi through Apple's device service (same channel Apple Devices / Finder use)
+idevice = { version = "0.1.68", default-features = false, features = ["ring", "usbmuxd", "installation_proxy", "afc"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

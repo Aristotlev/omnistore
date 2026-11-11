@@ -56,20 +56,85 @@ pub fn volumes() -> Vec<Volume> {
     out
 }
 
-pub fn this_device(settings: &Settings, vols: &[Volume], model: Option<String>) -> DeviceSnapshot {
+pub fn this_device(settings: &Settings, vols: &[Volume], model: Option<String>, report: &LocalReport) -> DeviceSnapshot {
     let internal: Vec<&Volume> = vols.iter().filter(|v| !v.removable).collect();
+    let total: u64 = internal.iter().map(|v| v.total_bytes).sum();
+    let free: u64 = internal.iter().map(|v| v.free_bytes).sum();
+    let used = total.saturating_sub(free);
+
+    // What fills this computer
+    let cloud_files: u64 = report.sync_clients.iter().map(|c| c.local_bytes + c.cache_bytes).sum();
+    let backups: u64 = report.ios_backups.iter().map(|b| b.bytes).sum();
+    let r = |id: &str| report.reclaimable.iter().filter(|x| x.id == id).map(|x| x.bytes).sum::<u64>();
+    let mut breakdown = vec![
+        UsageSlice { key: "cloud_files".into(), label: "Cloud files kept on this device".into(), bytes: cloud_files, color: Some("#3693f3".into()) },
+        UsageSlice { key: "ios_backups".into(), label: "iPhone and iPad backups".into(), bytes: backups, color: Some("#b28cff".into()) },
+        UsageSlice { key: "downloads".into(), label: "Downloads".into(), bytes: r("downloads"), color: Some("#ffb547".into()) },
+        UsageSlice {
+            key: "junk".into(),
+            label: "Recycle Bin, Trash and temp files".into(),
+            bytes: r("recycle_bin") + r("trash") + r("temp") + r("windows_old"),
+            color: Some("#ff5c7a".into()),
+        },
+    ];
+    for (key, label, path, color) in mac_extra_folders() {
+        breakdown.push(UsageSlice { key: key.into(), label: label.into(), bytes: sized(&path, SYNC_BUDGET).local_bytes, color: Some(color.into()) });
+    }
+    let known: u64 = breakdown.iter().map(|b| b.bytes).sum();
+    breakdown.push(UsageSlice {
+        key: "system".into(),
+        label: "System, apps and other files".into(),
+        bytes: used.saturating_sub(known),
+        color: Some("#9aa3bd".into()),
+    });
+    breakdown.retain(|b| b.bytes > 0);
+
+    // How this computer uses the cloud
+    let cloud = report
+        .sync_clients
+        .iter()
+        .filter(|c| c.installed || c.sync_root.is_some())
+        .map(|c| CloudLink {
+            name: c.name.clone(),
+            detail: match (&c.sync_root, c.cache_bytes) {
+                (Some(root), _) => root.clone(),
+                (None, cache) if cache > 0 => "Streaming, cache on this device".into(),
+                _ => "Installed".into(),
+            },
+            local_bytes: c.local_bytes + c.cache_bytes,
+            cloud_bytes: c.cloud_only_bytes,
+        })
+        .collect();
+
     DeviceSnapshot {
         id: settings.device_id.clone(),
         name: settings.device_name.clone(),
         kind: device_kind().into(),
         model,
         os: System::long_os_version(),
-        total_bytes: internal.iter().map(|v| v.total_bytes).sum(),
-        free_bytes: internal.iter().map(|v| v.free_bytes).sum(),
+        total_bytes: total,
+        free_bytes: free,
         volumes: vols.to_vec(),
         source: "this device".into(),
         updated_at: now(),
+        breakdown,
+        top_apps: vec![],
+        media: None,
+        cloud,
+        connection: None,
     }
+}
+
+/// macOS keeps the Photos library and apps in known places. Measured so the breakdown is exact.
+fn mac_extra_folders() -> Vec<(&'static str, &'static str, PathBuf, &'static str)> {
+    if !cfg!(target_os = "macos") {
+        return vec![];
+    }
+    let h = home();
+    vec![
+        ("photos_library", "Photos library", h.join("Pictures").join("Photos Library.photoslibrary"), "#2ed3b7"),
+        ("applications", "Applications", PathBuf::from("/Applications"), "#6c8cff"),
+    ]
 }
 
 pub fn now() -> String {
@@ -97,8 +162,10 @@ pub fn scan(settings: &Settings) -> (LocalReport, DeviceSnapshot) {
         physical_disks: physical,
         volumes: vols.clone(),
         scanned_at: now(),
+        ios_status: String::new(),
+        ios_errors: vec![],
     };
-    let device = this_device(settings, &vols, model);
+    let device = this_device(settings, &vols, model, &report);
     (report, device)
 }
 
@@ -484,20 +551,24 @@ pub fn sync_dir() -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.is_dir()).map(|p| p.join("OmniStore").join("Devices"))
 }
 
-pub fn sync_devices(this: &DeviceSnapshot) -> (Option<String>, Vec<DeviceSnapshot>) {
+pub fn sync_devices(publish: &[DeviceSnapshot]) -> (Option<String>, Vec<DeviceSnapshot>) {
     let Some(dir) = sync_dir() else { return (None, vec![]) };
     if std::fs::create_dir_all(&dir).is_err() {
         return (None, vec![]);
     }
-    let mine = dir.join(format!("{}.json", this.id));
-    if let Ok(raw) = serde_json::to_vec_pretty(this) {
-        let _ = std::fs::write(&mine, raw);
+    let mut mine = std::collections::HashSet::new();
+    for d in publish {
+        let path = dir.join(format!("{}.json", d.id));
+        if let Ok(raw) = serde_json::to_vec_pretty(d) {
+            let _ = std::fs::write(&path, raw);
+        }
+        mine.insert(path);
     }
     let mut others = vec![];
     if let Ok(rd) = std::fs::read_dir(&dir) {
         for e in rd.filter_map(Result::ok) {
             let p = e.path();
-            if p == mine || p.extension().and_then(|x| x.to_str()) != Some("json") {
+            if mine.contains(&p) || p.extension().and_then(|x| x.to_str()) != Some("json") {
                 continue;
             }
             if let Some(mut d) = std::fs::read_to_string(&p).ok().and_then(|raw| serde_json::from_str::<DeviceSnapshot>(&raw).ok()) {
