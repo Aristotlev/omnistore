@@ -89,7 +89,7 @@ export default function App() {
     api.getDashboard().then((dash) => {
       setD(dash);
       const stale = !dash.local?.scannedAt || Date.now() - new Date(dash.local.scannedAt).getTime() > 3600e3;
-      if (stale) task("local", api.scanLocal);
+      if (stale) task("refresh", api.refreshAll);
     });
     api.getSettings().then(setSettings);
     api.appVersion().then(setVersion);
