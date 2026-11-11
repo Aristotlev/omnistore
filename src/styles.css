@@ -104,7 +104,7 @@ button { font: inherit; color: inherit; }
 .spin { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+.pill { white-space: nowrap; flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
 .pill.ok { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
 .pill.near, .pill.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
 .pill.critical, .pill.over { color: var(--bad); background: color-mix(in srgb, var(--bad) 15%, transparent); }
@@ -144,7 +144,8 @@ td.r, th.r { text-align: right; }
 .path { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; color: var(--muted); }
 
 .device { display: grid; gap: 10px; }
-.device .top { display: flex; align-items: center; gap: 12px; }
+.device .top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.device .top > .grow { flex: 1; min-width: 0; }
 .device .name { font-weight: 600; }
 .empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 22px; color: var(--muted); text-align: center; }
 .connect { display: grid; gap: 12px; justify-items: start; }
@@ -161,3 +162,13 @@ ol.steps b { color: var(--text); font-weight: 600; }
 code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
 
 .trend { width: 100%; height: 120px; display: block; }
+
+.toast { position: fixed; right: 24px; bottom: 24px; background: var(--text); color: var(--bg); padding: 11px 16px; border-radius: 10px; font-weight: 550; box-shadow: var(--shadow); z-index: 20; }
+.update { background: color-mix(in srgb, var(--good) 14%, transparent); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.btn.apple { background: #000; border-color: #000; color: #fff; }
+@media (prefers-color-scheme: light) { .btn.apple { background: #000; color: #fff; } }
+.card { overflow: hidden; }
+.source { font-size: 11.5px; color: var(--muted); }
+.btn.google { background: #fff; color: #1f1f1f; border-color: #dadce0; }
+.btn.google:hover { border-color: #4285f4; }
+.g-mark { font-weight: 700; color: #4285f4; font-family: Arial, sans-serif; }

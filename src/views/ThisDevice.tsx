@@ -90,7 +90,9 @@ export default function ThisDevice({ c }: { c: Ctx }) {
                     <td className="r num">{bytes(r.bytes)}</td>
                     <td className="r">
                       {r.id === "recycle_bin"
-                        ? <button className="btn" onClick={() => c.act({ label: "", kind: "empty_recycle_bin" })}>Empty</button>
+                        ? <button className="btn" disabled={!!busy["act:empty_recycle_bin"] || r.bytes === 0} onClick={() => c.act({ label: "", kind: "empty_recycle_bin" }, "act:empty_recycle_bin")}>
+                            {busy["act:empty_recycle_bin"] && <Spinner />}{r.bytes === 0 ? "Empty" : "Empty now"}
+                          </button>
                         : r.path && <button className="btn ghost" onClick={() => open(r.path)}><FolderOpen size={14} /></button>}
                     </td>
                   </tr>

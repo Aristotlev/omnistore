@@ -2,20 +2,22 @@ use serde::{Deserialize, Serialize};
 
 /// Everything the dashboard renders. Cached on disk so the UI opens instantly.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct Dashboard {
     pub this_device: Option<DeviceSnapshot>,
     pub local: Option<LocalReport>,
     pub icloud: Option<CloudAccount>,
     pub google: Option<CloudAccount>,
-    /// Devices reported by other OmniStore installs (synced via Google hidden app folder)
-    /// plus Apple devices listed on the iCloud account.
+    /// Devices reported by other OmniStore installs (synced through the iCloud Drive /
+    /// OneDrive / Dropbox folder) plus Apple devices listed on the iCloud account.
     pub devices: Vec<DeviceSnapshot>,
     pub large_files: Vec<FileEntry>,
     pub findings: Vec<Finding>,
     pub totals: Totals,
     pub history: Vec<HistoryPoint>,
     pub updated_at: Option<String>,
+    /// Folder used to share device snapshots between installs, if one exists.
+    pub sync_folder: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -189,7 +191,7 @@ pub struct Finding {
 #[serde(rename_all = "camelCase")]
 pub struct Action {
     pub label: String,
-    /// open_url | open_path | empty_recycle_bin
+    /// open_url | open_path | empty_recycle_bin | icloud_signin
     pub kind: String,
     pub target: Option<String>,
 }
@@ -204,13 +206,11 @@ pub struct HistoryPoint {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub device_id: String,
     pub device_name: String,
-    pub google_client_id: String,
-    pub google_client_secret: String,
-    pub google_email: Option<String>,
     pub icloud_connected: bool,
+    pub google_email: Option<String>,
     pub large_file_min_mb: u64,
 }

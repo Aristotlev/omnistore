@@ -55,24 +55,13 @@ fn get_dashboard(state: State<'_, AppState>) -> Dashboard {
 
 #[tauri::command]
 fn get_settings(state: State<'_, AppState>) -> Settings {
-    masked(&state)
-}
-
-fn masked(state: &AppState) -> Settings {
-    let mut s = state.settings();
-    // never send the secret back to the UI
-    if !s.google_client_secret.is_empty() {
-        s.google_client_secret = "••••••••".into();
-    }
-    s
+    state.settings()
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SettingsInput {
     device_name: Option<String>,
-    google_client_id: Option<String>,
-    google_client_secret: Option<String>,
     large_file_min_mb: Option<u64>,
 }
 
@@ -83,31 +72,31 @@ fn save_settings(state: State<'_, AppState>, input: SettingsInput) -> Settings {
         if let Some(v) = input.device_name.filter(|v| !v.trim().is_empty()) {
             s.device_name = v.trim().into();
         }
-        if let Some(v) = input.google_client_id {
-            s.google_client_id = v.trim().into();
-        }
-        if let Some(v) = input.google_client_secret.filter(|v| !v.contains('•')) {
-            s.google_client_secret = v.trim().into();
-        }
         if let Some(v) = input.large_file_min_mb.filter(|v| *v >= 50) {
             s.large_file_min_mb = v;
         }
     }
     state.save_settings();
-    masked(&state)
+    state.settings()
 }
 
 #[tauri::command]
 async fn scan_local(app: AppHandle) -> Res<Dashboard> {
     let settings = app.state::<AppState>().settings();
-    let (report, device) = tauri::async_runtime::spawn_blocking(move || local::scan(&settings))
-        .await
-        .map_err(|e| e.to_string())?;
+    let (report, device, sync) = tauri::async_runtime::spawn_blocking(move || {
+        let (report, device) = local::scan(&settings);
+        let sync = local::sync_devices(&device);
+        (report, device, sync)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     {
         let state = app.state::<AppState>();
         let mut d = state.dashboard.lock().unwrap();
         d.local = Some(report);
         d.this_device = Some(device);
+        d.sync_folder = sync.0;
+        merge_devices(&mut d, "OmniStore sync", sync.1);
     }
     Ok(commit(&app))
 }
@@ -115,7 +104,6 @@ async fn scan_local(app: AppHandle) -> Res<Dashboard> {
 #[tauri::command]
 async fn deep_scan(app: AppHandle) -> Res<Dashboard> {
     let min = app.state::<AppState>().settings().large_file_min_mb * 1_000_000;
-    let _ = app.emit("scan://progress", "Scanning your user folder for large files…");
     let files = tauri::async_runtime::spawn_blocking(move || {
         let home = dirs::home_dir().unwrap_or_default();
         scan::large_files(&home, min, 200, std::time::Duration::from_secs(120))
@@ -123,7 +111,6 @@ async fn deep_scan(app: AppHandle) -> Res<Dashboard> {
     .await
     .map_err(|e| e.to_string())?;
     app.state::<AppState>().dashboard.lock().unwrap().large_files = files;
-    let _ = app.emit("scan://progress", "");
     Ok(commit(&app))
 }
 
@@ -157,33 +144,27 @@ async fn icloud_disconnect(app: AppHandle) -> Res<Dashboard> {
 }
 
 async fn google_pull(app: &AppHandle) -> Res<()> {
-    let settings = app.state::<AppState>().settings();
-    let token = google::access_token(&settings).await?;
+    let token = google::access_token().await?;
     let account = google::fetch_account(&token).await?;
-    let this = app.state::<AppState>().dashboard.lock().unwrap().this_device.clone();
-    let others = match this {
-        Some(t) => google::sync_devices(&token, &t).await.unwrap_or_default(),
-        None => vec![],
-    };
-    let state = app.state::<AppState>();
-    {
-        let mut d = state.dashboard.lock().unwrap();
-        d.google = Some(account);
-        merge_devices(&mut d, "OmniStore sync", others);
-    }
+    app.state::<AppState>().dashboard.lock().unwrap().google = Some(account);
     Ok(())
 }
 
 #[tauri::command]
+fn google_available() -> bool {
+    google::available()
+}
+
+#[tauri::command]
 async fn google_connect(app: AppHandle) -> Res<Dashboard> {
-    let settings = app.state::<AppState>().settings();
-    let email = google::connect(&app, &settings).await?;
+    let email = google::connect(&app).await?;
     {
         let state = app.state::<AppState>();
         state.settings.lock().unwrap().google_email = Some(email);
         state.save_settings();
     }
     google_pull(&app).await?;
+    let _ = app.emit("toast", "Google connected.");
     Ok(commit(&app))
 }
 
@@ -197,17 +178,13 @@ async fn google_refresh(app: AppHandle) -> Res<Dashboard> {
 fn google_disconnect(app: AppHandle) -> Dashboard {
     google::disconnect();
     let state = app.state::<AppState>();
-    {
-        let mut d = state.dashboard.lock().unwrap();
-        d.google = None;
-        merge_devices(&mut d, "OmniStore sync", vec![]);
-    }
+    state.dashboard.lock().unwrap().google = None;
     state.settings.lock().unwrap().google_email = None;
     state.save_settings();
     commit(&app)
 }
 
-/// Rescan this device, then refresh every connected account. Errors per source are reported, not fatal.
+/// Rescan this device, then refresh every signed-in account. Errors are reported, not fatal.
 #[tauri::command]
 async fn refresh_all(app: AppHandle) -> Res<Vec<String>> {
     let mut errors = vec![];
@@ -228,42 +205,71 @@ async fn refresh_all(app: AppHandle) -> Res<Vec<String>> {
     Ok(errors)
 }
 
+/// Empties the Recycle Bin, then re-reads only its size so the UI updates instantly.
 #[tauri::command]
-async fn run_action(app: AppHandle, action: Action) -> Res<()> {
+async fn empty_recycle_bin(app: AppHandle) -> Res<Dashboard> {
+    let freed = tauri::async_runtime::spawn_blocking(|| {
+        let before = local::recycle_bin_bytes();
+        local::empty_recycle_bin().map(|_| before.saturating_sub(local::recycle_bin_bytes()))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    {
+        let state = app.state::<AppState>();
+        let mut d = state.dashboard.lock().unwrap();
+        if let Some(l) = d.local.as_mut() {
+            let now = local::recycle_bin_bytes();
+            for r in l.reclaimable.iter_mut().filter(|r| r.id == "recycle_bin" || r.id == "trash") {
+                r.bytes = now;
+            }
+        }
+        // Free space on the drives changed too.
+        let vols = local::volumes();
+        if let Some(l) = d.local.as_mut() {
+            l.volumes = vols.clone();
+        }
+        if let Some(t) = d.this_device.as_mut() {
+            let internal: Vec<&Volume> = vols.iter().filter(|v| !v.removable).collect();
+            t.free_bytes = internal.iter().map(|v| v.free_bytes).sum();
+            t.volumes = vols.clone();
+        }
+    }
+    let _ = app.emit("toast", format!("Recycle Bin emptied. {} freed.", rules::fmt_bytes(freed)));
+    Ok(commit(&app))
+}
+
+#[tauri::command]
+async fn run_action(app: AppHandle, action: Action) -> Res<Option<Dashboard>> {
     match action.kind.as_str() {
         "open_url" => {
             let t = action.target.ok_or("missing url")?;
-            app.opener().open_url(t, None::<&str>).map_err(|e| e.to_string())
+            app.opener().open_url(t, None::<&str>).map_err(|e| e.to_string())?;
+            Ok(None)
         }
         "open_path" => {
             let t = action.target.ok_or("missing path")?;
-            app.opener().open_path(t, None::<&str>).map_err(|e| e.to_string())
+            app.opener().open_path(t, None::<&str>).map_err(|e| e.to_string())?;
+            Ok(None)
         }
-        "empty_recycle_bin" => {
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                std::process::Command::new("powershell.exe")
-                    .args(["-NoProfile", "-NonInteractive", "-Command", "Clear-RecycleBin -Force -ErrorAction SilentlyContinue"])
-                    .creation_flags(0x0800_0000)
-                    .status()
-                    .map_err(|e| e.to_string())?;
-            }
-            scan_local(app).await.map(|_| ())
-        }
+        "empty_recycle_bin" => empty_recycle_bin(app).await.map(Some),
+        "icloud_signin" => icloud::open(&app, true).map(|_| None),
         other => Err(format!("unknown action {other}")),
     }
 }
 
 #[tauri::command]
-fn google_status() -> bool {
-    google::is_connected()
+fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build());
+    builder
         .setup(|app| {
             let state = AppState::load(app.handle());
             app.manage(state);
@@ -278,12 +284,14 @@ pub fn run() {
             icloud_connect,
             icloud_refresh,
             icloud_disconnect,
+            google_available,
             google_connect,
             google_refresh,
             google_disconnect,
-            google_status,
             refresh_all,
-            run_action
+            empty_recycle_bin,
+            run_action,
+            app_version
         ])
         .run(tauri::generate_context!())
         .expect("error while running OmniStore");

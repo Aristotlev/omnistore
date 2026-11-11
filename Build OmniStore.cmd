@@ -1,3 +1,3 @@
 @echo off
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0build-on-github.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0publish.ps1"
 pause

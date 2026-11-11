@@ -15,11 +15,10 @@ function DeviceCard({ x }: { x: DeviceSnapshot }) {
       <div className="device">
         <div className="top">
           <div className="icon-chip"><DeviceIcon kind={x.kind} /></div>
-          <div style={{ minWidth: 0 }}>
-            <div className="name ellipsis">{x.name}</div>
-            <div className="muted small ellipsis">{[x.model, x.os].filter(Boolean).join(" · ") || KIND[x.kind]}</div>
+          <div className="grow">
+            <div className="name ellipsis" title={x.name}>{x.name}</div>
+            <div className="muted small ellipsis" title={[x.model, x.os].filter(Boolean).join(" · ")}>{[x.model, x.os].filter(Boolean).join(" · ") || KIND[x.kind]}</div>
           </div>
-          <span className="pill info" style={{ marginLeft: "auto" }}>{x.source}</span>
         </div>
         {hasStorage ? (
           <>
@@ -32,7 +31,10 @@ function DeviceCard({ x }: { x: DeviceSnapshot }) {
         ) : (
           <div className="muted small">Seen on your Apple Account. Install OmniStore on it to read its storage.</div>
         )}
-        <div className="muted small">Updated {ago(x.updatedAt)}</div>
+        <div className="row small" style={{ justifyContent: "space-between" }}>
+          <span className="muted">Updated {ago(x.updatedAt)}</span>
+          <span className="source">{x.source}</span>
+        </div>
       </div>
     </Card>
   );
@@ -54,9 +56,13 @@ export default function Devices({ c }: { c: Ctx }) {
         {accountOnly.map((x) => <DeviceCard key={x.id} x={x} />)}
       </div>
 
-      {!d.google && (
-        <div className="banner mt">Install OmniStore on your Mac, iPhone and iPad and sign in with the same Google account. Each device then appears here with its storage.</div>
-      )}
+      <div className="banner mt">
+        <span>
+          {d.syncFolder
+            ? <>Devices share their storage through <b>{d.syncFolder}</b>. Install OmniStore on your other devices and they appear here.</>
+            : <>Install iCloud for Windows or OneDrive so OmniStore on your other devices can share storage through it.</>}
+        </span>
+      </div>
 
       <div className="grid g2 mt">
         <Card title="iPhone and iPad backups on this PC" icon={<Archive size={16} />} sub={`${backups.length} found`}>

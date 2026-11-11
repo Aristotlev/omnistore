@@ -7,9 +7,6 @@ export function demoSettings(): Settings {
   return {
     deviceId: "demo-pc",
     deviceName: "DESKTOP-DEMO",
-    googleClientId: "",
-    googleClientSecret: "",
-    googleEmail: "you@gmail.com",
     icloudConnected: true,
     largeFileMinMb: 500,
   };
@@ -22,7 +19,7 @@ export function demoDashboard(): Dashboard {
       date: d.toISOString().slice(0, 10),
       icloudUsed: (196 + i * 0.55) * G,
       googleUsed: (60 + i * 0.13) * G,
-      localUsed: (690 + i * 1.4) * G,
+            localUsed: (690 + i * 1.4) * G,
     };
   });
   return {
@@ -76,6 +73,7 @@ export function demoDashboard(): Dashboard {
       fetchedAt: now(),
       note: "Google reports Gmail and Photos as one combined figure.",
     },
+    syncFolder: "C:\\Users\\you\\iCloudDrive\\OmniStore\\Devices",
     devices: [
       { id: "mac", name: "MacBook", kind: "macos", model: "MacBook Pro", os: "macOS 26", totalBytes: 1000 * G, freeBytes: 211 * G, volumes: [], source: "OmniStore sync", updatedAt: now() },
       { id: "iphone", name: "iPhone", kind: "ios", model: "iPhone", os: "iOS 26.1", totalBytes: 128 * G, freeBytes: 6.2 * G, volumes: [], source: "OmniStore sync", updatedAt: now() },
@@ -121,7 +119,6 @@ export function demoDashboard(): Dashboard {
       { id: "iosbackup", severity: "warn", title: "iPhone backup on this PC: 58.3 GB", detail: "Last backup 2024-03-02. Older than 6 months, likely safe to delete if iCloud Backup is on.", bytes: 58.3 * G, monthlyEur: 0, action: { label: "Show in folder", kind: "open_path", target: "C:\\" } },
       { id: "vol-C", severity: "warn", title: "C:\\ is 91% full", detail: "92 GB free of 1.00 TB.", bytes: 0, monthlyEur: 0, action: { label: "Storage settings", kind: "open_url", target: "ms-settings:storagesense" } },
       { id: "reclaim-recycle", severity: "warn", title: "Recycle Bin: 4.8 GB", detail: "Safe to clear.", bytes: 4.8 * G, monthlyEur: 0, action: { label: "Empty Recycle Bin", kind: "empty_recycle_bin" } },
-      { id: "Google-trash", severity: "warn", title: "Empty Google Drive trash (3.1 GB)", detail: "Trashed files still count against your Google storage.", bytes: 3.1 * G, monthlyEur: 0, action: { label: "Open trash", kind: "open_url", target: "https://drive.google.com/drive/trash" } },
       { id: "dev-iphone", severity: "warn", title: "iPhone has only 6.2 GB free", detail: "128 GB total. Turn on Optimize Storage for Photos and offload unused apps.", bytes: 0, monthlyEur: 0 },
       { id: "sync-icloud_photos", severity: "info", title: "iCloud Photos keeps 38.5 GB downloaded on this PC", detail: "Right-click folders you rarely open and choose \"Free up space\" (online-only).", bytes: 38.5 * G, monthlyEur: 0, action: { label: "Open folder", kind: "open_path", target: "C:\\" } },
       { id: "cache-google_drive", severity: "info", title: "Google Drive for desktop cache uses 6.4 GB", detail: "Lower the cache or switch folders to streaming in the app's preferences.", bytes: 6.4 * G, monthlyEur: 0 },

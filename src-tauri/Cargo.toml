@@ -18,22 +18,27 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["net", "io-util", "time", "macros", "rt-multi-thread", "sync"] }
-# native-tls = SChannel on Windows, Security.framework on macOS/iOS (no C toolchain needed)
-reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls", "multipart"] }
 sysinfo = { version = "0.37", default-features = false, features = ["disk", "system"] }
-keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
 walkdir = "2"
 plist = "1"
 dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
+# Google sign-in (system browser + PKCE). native-tls = SChannel on Windows, Security.framework on Apple.
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+tokio = { version = "1", features = ["net", "io-util", "time"] }
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
 sha2 = "0.10"
 base64 = "0.22"
 rand = "0.8"
 url = "2"
-urlencoding = "2"
-anyhow = "1"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_UI_Shell", "Win32_Foundation"] }
 
 [profile.release]
 codegen-units = 1

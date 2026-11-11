@@ -28,17 +28,6 @@ impl AppState {
         if settings.large_file_min_mb == 0 {
             settings.large_file_min_mb = 500;
         }
-        // Build-time defaults let you ship a client ID without users pasting one.
-        if settings.google_client_id.is_empty() {
-            if let Some(id) = option_env!("OMNISTORE_GOOGLE_CLIENT_ID") {
-                settings.google_client_id = id.to_string();
-            }
-        }
-        if settings.google_client_secret.is_empty() {
-            if let Some(s) = option_env!("OMNISTORE_GOOGLE_CLIENT_SECRET") {
-                settings.google_client_secret = s.to_string();
-            }
-        }
         let dashboard: Dashboard = read_json(&dir.join("dashboard.json")).unwrap_or_default();
         let state = Self { dir, settings: Mutex::new(settings), dashboard: Mutex::new(dashboard) };
         state.save_settings();
@@ -97,7 +86,7 @@ pub fn write_json<T: Serialize>(path: &PathBuf, value: &T) {
     }
 }
 
-/// Secrets (Google refresh token) live in the OS credential store:
+/// The Google refresh token lives in the OS credential store:
 /// Windows Credential Manager, macOS/iOS Keychain.
 pub mod secrets {
     const SERVICE: &str = "app.omnistore";

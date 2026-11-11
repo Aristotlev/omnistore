@@ -27,3 +27,4 @@ dist-ssr
 build-log.txt
 build-error.txt
 src-tauri/gen/
+release-keys/

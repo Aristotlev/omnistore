@@ -77,14 +77,13 @@ export interface Dashboard {
   totals: Totals;
   history: HistoryPoint[];
   updatedAt?: string | null;
+  syncFolder?: string | null;
 }
 
 export interface Settings {
   deviceId: string;
   deviceName: string;
-  googleClientId: string;
-  googleClientSecret: string;
-  googleEmail?: string | null;
   icloudConnected: boolean;
+  googleEmail?: string | null;
   largeFileMinMb: number;
 }

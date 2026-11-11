@@ -1,20 +1,20 @@
-import { Cloud, LogOut, RefreshCw, ExternalLink, ShieldCheck } from "lucide-react";
-import { Card, Legend, Spinner, StackedBar, StatusPill, UsageBar } from "../components";
+import { Cloud, LogOut, RefreshCw, ExternalLink, ShieldCheck, KeyRound, FolderOpen } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Card, Legend, Spinner, StackedBar, StatusPill } from "../components";
 import { ago, bytes, eur, pct } from "../format";
 import type { CloudAccount } from "../types";
 import type { Ctx } from "../ctx";
 import { api } from "../api";
 
-function AccountDetail(p: {
-  a: CloudAccount; name: string; color: string; manageUrl: string; busy: boolean;
-  onRefresh: () => void; onDisconnect: () => void; onManage: () => void;
-}) {
-  const { a } = p;
+function AccountDetail(p: { c: Ctx; a: CloudAccount; name: string; color: string; busyKey: string; manageUrl: string; refresh: () => Promise<unknown>; signOut: () => Promise<unknown> }) {
+  const { a, c } = p;
   return (
     <Card title={p.name} icon={<Cloud size={16} color={p.color} />} sub={`${a.accountLabel} · updated ${ago(a.fetchedAt)}`}
       end={<>
         <StatusPill status={a.status} />
-        <button className="btn" onClick={p.onRefresh} disabled={p.busy}>{p.busy ? <Spinner /> : <RefreshCw size={14} />}Refresh</button>
+        <button className="btn" onClick={() => c.task(p.busyKey, p.refresh)} disabled={!!c.busy[p.busyKey]}>
+          {c.busy[p.busyKey] ? <Spinner /> : <RefreshCw size={14} />}Refresh
+        </button>
       </>}>
       <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
         <div style={{ fontSize: 24, fontWeight: 650 }} className="num">{bytes(a.used)} <span className="muted" style={{ fontSize: 14, fontWeight: 500 }}>of {bytes(a.limit)}</span></div>
@@ -27,72 +27,94 @@ function AccountDetail(p: {
       <table className="mt2">
         <tbody>
           <tr><td className="muted">Plan</td><td className="r strong">{a.plan.name}</td></tr>
-          <tr><td className="muted">Plan detected from</td><td className="r">{a.plan.exact ? "Your account" : "Quota size"}</td></tr>
-          <tr><td className="muted">Price</td><td className="r">{eur(a.plan.monthlyEur)}/mo {!a.plan.priceVerified && <span className="pill warn">unverified</span>}</td></tr>
+          <tr><td className="muted">Price</td><td className="r">{eur(a.plan.monthlyEur)}/mo {!a.plan.priceVerified && <span className="pill warn">estimate</span>}</td></tr>
           <tr><td className="muted">Free space</td><td className="r num">{bytes(Math.max(0, a.limit - a.used))}</td></tr>
           <tr><td className="muted">Over plan by</td><td className="r num" style={{ color: a.overBy ? "var(--bad)" : undefined }}>{a.overBy ? bytes(a.overBy) : "Not over"}</td></tr>
           {a.familyShared && <tr><td className="muted">Family Sharing</td><td className="r">Shared plan</td></tr>}
         </tbody>
       </table>
       <div className="row mt">
-        <button className="btn" onClick={p.onManage}><ExternalLink size={14} />Manage plan</button>
-        <button className="btn ghost danger" onClick={p.onDisconnect}><LogOut size={14} />Disconnect</button>
+        <button className="btn" onClick={() => c.act({ label: "", kind: "open_url", target: p.manageUrl })}><ExternalLink size={14} />Manage plan</button>
+        <button className="btn ghost danger" onClick={() => c.task(`${p.busyKey}-out`, p.signOut)}><LogOut size={14} />Sign out</button>
       </div>
     </Card>
   );
 }
 
+export function GoogleButton({ c }: { c: Ctx }) {
+  const [available, setAvailable] = useState(true);
+  useEffect(() => { api.googleAvailable().then(setAvailable); }, []);
+  return (
+    <>
+      <button className="btn google" disabled={!available || !!c.busy.google} onClick={() => c.task("google", api.googleConnect)}>
+        {c.busy.google ? <Spinner /> : <span className="g-mark">G</span>}Continue with Google
+      </button>
+      {c.busy.google && <span className="muted small">Finish signing in in your browser, then come back here.</span>}
+      {!available && <span className="muted small">Google sign-in comes with the published OmniStore build.</span>}
+    </>
+  );
+}
+
+export function AppleButton({ c }: { c: Ctx }) {
+  return (
+    <button className="btn apple" disabled={!!c.busy.icloud} onClick={() => c.task("icloud", api.icloudConnect)}>
+      {c.busy.icloud ? <Spinner /> : <KeyRound size={14} />}Sign in to iCloud
+    </button>
+  );
+}
+
 export default function Clouds({ c }: { c: Ctx }) {
-  const { d, busy } = c;
-  const googleReady = !!c.settings?.googleClientId;
+  const { d } = c;
+  const apps = (d.local?.syncClients ?? []).filter((s) => s.installed || s.syncRoot);
 
   return (
-    <div className="grid g2">
-      {d.icloud ? (
-        <AccountDetail a={d.icloud} name="iCloud" color="var(--icloud)" manageUrl="https://www.icloud.com/settings/" busy={!!busy.icloud}
-          onRefresh={() => c.task("icloud", api.icloudRefresh)}
-          onDisconnect={() => c.task("icloud", api.icloudDisconnect)}
-          onManage={() => c.act({ label: "", kind: "open_url", target: "https://www.icloud.com/settings/" })} />
-      ) : (
-        <Card title="iCloud" icon={<Cloud size={16} color="var(--icloud)" />} sub="Apple Account">
-          <div className="connect">
-            <p>Sign in on Apple's own iCloud page inside OmniStore. Your password and 2FA code go to Apple only. OmniStore then reads your plan, usage by category, and the Apple devices on your account.</p>
-            <button className="btn primary" disabled={!!busy.icloud} onClick={() => c.task("icloud", api.icloudConnect)}>
-              {busy.icloud && <Spinner />}Sign in with Apple Account
-            </button>
-            <span className="muted small row"><ShieldCheck size={14} />Session stays on this PC. Disconnect signs you out.</span>
-          </div>
-        </Card>
-      )}
+    <>
+      <div className="grid g2">
+        {d.icloud ? (
+          <AccountDetail c={c} a={d.icloud} name="iCloud" color="var(--icloud)" busyKey="icloud" manageUrl="https://www.icloud.com/settings/"
+            refresh={api.icloudRefresh} signOut={api.icloudDisconnect} />
+        ) : (
+          <Card title="iCloud" icon={<Cloud size={16} color="var(--icloud)" />} sub="Apple Account">
+            <div className="connect">
+              <p>Sign in once on Apple's own page. Use a passkey (scan the QR code with your iPhone) or approve the sign-in on your iPhone.</p>
+              <AppleButton c={c} />
+              <span className="muted small row"><ShieldCheck size={14} />Your password goes to Apple only. You stay signed in on this PC until you sign out.</span>
+            </div>
+          </Card>
+        )}
 
-      {d.google ? (
-        <AccountDetail a={d.google} name="Google" color="var(--google)" manageUrl="https://one.google.com/storage" busy={!!busy.google}
-          onRefresh={() => c.task("google", api.googleRefresh)}
-          onDisconnect={() => c.task("google", api.googleDisconnect)}
-          onManage={() => c.act({ label: "", kind: "open_url", target: "https://one.google.com/storage" })} />
-      ) : (
-        <Card title="Google" icon={<Cloud size={16} color="var(--google)" />} sub="Google One, Drive, Gmail, Photos">
-          <div className="connect">
-            <p>Google sign-in opens in your browser. Approve access and come back here. OmniStore reads your storage quota and keeps a small hidden app folder to sync your devices. It cannot open your files, mail or photos.</p>
-            <button className="btn primary" disabled={!googleReady || !!busy.google} onClick={() => c.task("google", api.googleConnect)}>
-              {busy.google && <Spinner />}Sign in with Google
-            </button>
-            {!googleReady && (
-              <span className="muted small">Add your Google OAuth client ID in <a href="#" onClick={(e) => { e.preventDefault(); c.go("settings"); }}>Settings</a> first.</span>
-            )}
-          </div>
-        </Card>
-      )}
+        {d.google ? (
+          <AccountDetail c={c} a={d.google} name="Google" color="var(--google)" busyKey="google" manageUrl="https://one.google.com/storage"
+            refresh={api.googleRefresh} signOut={api.googleDisconnect} />
+        ) : (
+          <Card title="Google" icon={<Cloud size={16} color="var(--google)" />} sub="Google One, Drive, Gmail, Photos">
+            <div className="connect">
+              <p>Pick your Google account in your browser and click Continue. OmniStore only reads your storage numbers. It cannot open your files, mail or photos.</p>
+              <GoogleButton c={c} />
+            </div>
+          </Card>
+        )}
+      </div>
 
-      {(d.icloud || d.google) && (
-        <Card title="Combined" sub="All connected clouds">
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <span className="num strong">{bytes(d.totals.cloudUsed)} of {bytes(d.totals.cloudCapacity)}</span>
-            <span className="muted num">{eur(d.totals.monthlySpendEur)}/mo</span>
-          </div>
-          <div className="mt"><UsageBar used={d.totals.cloudUsed} total={d.totals.cloudCapacity} thick /></div>
-        </Card>
-      )}
-    </div>
+      <Card title="Cloud apps on this PC" icon={<Cloud size={16} />} sub="What each app keeps downloaded" className="mt">
+        {apps.length ? (
+          <table>
+            <thead><tr><th>App</th><th className="r">On this PC</th><th className="r">Online-only</th><th /></tr></thead>
+            <tbody>
+              {apps.map((s) => (
+                <tr key={s.id}>
+                  <td><div className="strong">{s.name}</div><div className="path ellipsis" style={{ maxWidth: 420 }}>{s.syncRoot ?? "Streaming drive"}</div></td>
+                  <td className="r num">{bytes(s.localBytes + s.cacheBytes)}</td>
+                  <td className="r num muted">{bytes(s.cloudOnlyBytes)}</td>
+                  <td className="r">{s.syncRoot && (
+                    <button className="btn ghost" title="Open folder" onClick={() => c.act({ label: "", kind: "open_path", target: s.syncRoot })}><FolderOpen size={14} /></button>
+                  )}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <div className="empty">No iCloud, Google Drive, OneDrive or Dropbox apps found.</div>}
+      </Card>
+    </>
   );
 }

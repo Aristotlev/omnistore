@@ -14,7 +14,7 @@ export default function Optimise({ c }: { c: Ctx }) {
   return (
     <>
       <div className="banner">
-        {d.findings.length} recommendations · up to <b>&nbsp;{bytes(freeable)}&nbsp;</b> to review · <b>&nbsp;{eur(d.totals.potentialSavingsEur)}/mo&nbsp;</b> in plan savings
+        <span>{d.findings.length} recommendations · up to <b>{bytes(freeable)}</b> to review · <b>{eur(d.totals.potentialSavingsEur)}/mo</b> in plan savings</span>
       </div>
       <div className="grid">
         {GROUPS.map((g) => {
@@ -22,11 +22,11 @@ export default function Optimise({ c }: { c: Ctx }) {
           if (!items.length) return null;
           return (
             <Card key={g.key} title={g.title} sub={`${items.length} items`}>
-              {items.map((f) => <FindingRow key={f.id} f={f} onAction={(x) => x.action && c.act(x.action)} />)}
+              {items.map((f) => <FindingRow key={f.id} f={f} busy={!!c.busy[`act:${f.id}`]} onAction={(x) => x.action && c.act(x.action, `act:${x.id}`)} />)}
             </Card>
           );
         })}
-        {!d.findings.length && <div className="empty">Nothing to optimise yet. Connect your clouds and scan this device.</div>}
+        {!d.findings.length && <div className="empty">Nothing to optimise yet. Sign in to iCloud and scan this device.</div>}
       </div>
     </>
   );

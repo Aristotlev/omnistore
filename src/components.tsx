@@ -108,7 +108,7 @@ export function SevIcon({ severity }: { severity: Severity }) {
   return <div className={`sev ${severity}`}><Icon size={16} /></div>;
 }
 
-export function FindingRow(p: { f: Finding; onAction: (f: Finding) => void }) {
+export function FindingRow(p: { f: Finding; onAction: (f: Finding) => void; busy?: boolean }) {
   const { f } = p;
   return (
     <div className="finding">
@@ -120,7 +120,11 @@ export function FindingRow(p: { f: Finding; onAction: (f: Finding) => void }) {
       <div className="row" style={{ justifyContent: "flex-end" }}>
         {f.monthlyEur > 0 && <span className="save">−{eur(f.monthlyEur)}/mo</span>}
         {f.bytes > 0 && f.monthlyEur === 0 && <span className="muted small num">{bytes(f.bytes)}</span>}
-        {f.action && <button className="btn" onClick={() => p.onAction(f)}>{f.action.label}</button>}
+        {f.action && (
+          <button className="btn" disabled={p.busy} onClick={() => p.onAction(f)}>
+            {p.busy && <Spinner />}{f.action.label}
+          </button>
+        )}
       </div>
     </div>
   );

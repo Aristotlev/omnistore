@@ -153,7 +153,7 @@ pub fn ios_backups() -> Vec<IosBackup> {
 
 // ---------------------------------------------------------------- reclaimable
 
-fn reclaimable(vols: &[Volume]) -> Vec<Reclaimable> {
+fn reclaimable(_vols: &[Volume]) -> Vec<Reclaimable> {
     let mut out = vec![];
     let temp = std::env::temp_dir();
     out.push(Reclaimable {
@@ -164,12 +164,7 @@ fn reclaimable(vols: &[Volume]) -> Vec<Reclaimable> {
     });
 
     if cfg!(windows) {
-        let mut bin = 0u64;
-        for v in vols.iter().filter(|v| !v.removable) {
-            let p = PathBuf::from(&v.mount).join("$Recycle.Bin");
-            bin += sized(&p, SMALL_BUDGET).local_bytes;
-        }
-        out.push(Reclaimable { id: "recycle_bin".into(), label: "Recycle Bin".into(), bytes: bin, path: None });
+        out.push(Reclaimable { id: "recycle_bin".into(), label: "Recycle Bin".into(), bytes: recycle_bin_bytes(), path: None });
 
         let old = PathBuf::from("C:\\Windows.old");
         if old.exists() {
@@ -417,4 +412,99 @@ pub fn apple_usb_devices() -> Vec<String> {
     v.sort();
     v.dedup();
     v
+}
+
+// ---------------------------------------------------------------- Recycle Bin / Trash
+
+/// Size of the Recycle Bin on every drive, exactly as Windows reports it.
+#[cfg(windows)]
+pub fn recycle_bin_bytes() -> u64 {
+    use windows_sys::Win32::UI::Shell::{SHQueryRecycleBinW, SHQUERYRBINFO};
+    let mut info = SHQUERYRBINFO { cbSize: std::mem::size_of::<SHQUERYRBINFO>() as u32, i64Size: 0, i64NumItems: 0 };
+    // A null root path means all drives.
+    let hr = unsafe { SHQueryRecycleBinW(std::ptr::null(), &mut info) };
+    if hr == 0 { info.i64Size.max(0) as u64 } else { 0 }
+}
+
+#[cfg(not(windows))]
+pub fn recycle_bin_bytes() -> u64 {
+    0
+}
+
+/// Empties the Recycle Bin on every drive without the Explorer confirmation dialog.
+#[cfg(windows)]
+pub fn empty_recycle_bin() -> Result<(), String> {
+    use windows_sys::Win32::UI::Shell::SHEmptyRecycleBinW;
+    const SHERB_NOCONFIRMATION: u32 = 0x1;
+    const SHERB_NOPROGRESSUI: u32 = 0x2;
+    const SHERB_NOSOUND: u32 = 0x4;
+    let hr = unsafe {
+        SHEmptyRecycleBinW(std::ptr::null_mut(), std::ptr::null(), SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND)
+    };
+    // E_UNEXPECTED is what Windows returns when the bin is already empty.
+    if hr == 0 || hr as u32 == 0x8000_FFFF {
+        Ok(())
+    } else {
+        Err(format!("Windows could not empty the Recycle Bin (error 0x{:08X})", hr as u32))
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn empty_recycle_bin() -> Result<(), String> {
+    std::process::Command::new("osascript")
+        .args(["-e", "tell application \"Finder\" to empty trash"])
+        .status()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+pub fn empty_recycle_bin() -> Result<(), String> {
+    Err("Not supported on this device".into())
+}
+
+// ---------------------------------------------------------------- device sync (no servers, no APIs)
+
+/// Devices share snapshots through a folder that the user's own cloud app already syncs:
+/// iCloud Drive first, then OneDrive. Each install writes <device id>.json and reads the rest.
+pub fn sync_dir() -> Option<PathBuf> {
+    let h = home();
+    let mut candidates: Vec<PathBuf> = vec![];
+    if cfg!(windows) {
+        candidates.push(h.join("iCloudDrive"));
+    }
+    if cfg!(target_os = "macos") {
+        candidates.push(h.join("Library/Mobile Documents/com~apple~CloudDocs"));
+    }
+    for var in ["OneDriveConsumer", "OneDrive"] {
+        if let Ok(p) = std::env::var(var) {
+            candidates.push(PathBuf::from(p));
+        }
+    }
+    candidates.into_iter().find(|p| p.is_dir()).map(|p| p.join("OmniStore").join("Devices"))
+}
+
+pub fn sync_devices(this: &DeviceSnapshot) -> (Option<String>, Vec<DeviceSnapshot>) {
+    let Some(dir) = sync_dir() else { return (None, vec![]) };
+    if std::fs::create_dir_all(&dir).is_err() {
+        return (None, vec![]);
+    }
+    let mine = dir.join(format!("{}.json", this.id));
+    if let Ok(raw) = serde_json::to_vec_pretty(this) {
+        let _ = std::fs::write(&mine, raw);
+    }
+    let mut others = vec![];
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.filter_map(Result::ok) {
+            let p = e.path();
+            if p == mine || p.extension().and_then(|x| x.to_str()) != Some("json") {
+                continue;
+            }
+            if let Some(mut d) = std::fs::read_to_string(&p).ok().and_then(|raw| serde_json::from_str::<DeviceSnapshot>(&raw).ok()) {
+                d.source = "OmniStore sync".into();
+                others.push(d);
+            }
+        }
+    }
+    (Some(dir.display().to_string()), others)
 }

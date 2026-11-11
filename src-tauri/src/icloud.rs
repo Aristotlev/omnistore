@@ -33,6 +33,11 @@ const SCRIPT: &str = r#"
     if (done) return;
     var v = await getJson(SETUP + '/validate?' + Q, { method: 'POST', body: 'null', headers: { 'Content-Type': 'text/plain' } });
     if (!v || v.__error || !v.dsInfo) {
+      // Skip Apple's landing page and go straight to the sign-in form (passkey / iPhone / password).
+      var b = Array.from(document.querySelectorAll('button, a, ui-button')).find(function (e) {
+        return /^\s*(sign in|σύνδεση)\s*$/i.test(e.textContent || '');
+      });
+      if (b) b.click();
       if (!askedLogin) { askedLogin = true; send({ status: 'needs_login' }); }
       setTimeout(tick, 3000);
       return;
@@ -94,7 +99,7 @@ pub fn open(app: &AppHandle, interactive: bool) -> Result<(), String> {
             true
         });
     #[cfg(desktop)]
-    let builder = builder.title("Sign in to iCloud").inner_size(1040.0, 780.0).center().visible(interactive);
+    let builder = builder.title("Sign in to iCloud").inner_size(600.0, 780.0).min_inner_size(420.0, 600.0).center().visible(interactive);
     builder.build().map_err(|e| e.to_string())?;
     Ok(())
 }

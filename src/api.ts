@@ -19,10 +19,14 @@ export const api = {
   icloudConnect: () => (DEMO ? wait(300) : invoke<void>("icloud_connect")),
   icloudRefresh: () => (DEMO ? wait(300) : invoke<void>("icloud_refresh")),
   icloudDisconnect: () => (DEMO ? Promise.resolve(demoDashboard()) : invoke<Dashboard>("icloud_disconnect")),
+  googleAvailable: () => (DEMO ? Promise.resolve(true) : invoke<boolean>("google_available")),
   googleConnect: () => (DEMO ? wait(600).then(demoDashboard) : invoke<Dashboard>("google_connect")),
   googleRefresh: () => (DEMO ? wait(600).then(demoDashboard) : invoke<Dashboard>("google_refresh")),
   googleDisconnect: () => (DEMO ? Promise.resolve(demoDashboard()) : invoke<Dashboard>("google_disconnect")),
-  runAction: (action: Action) => (DEMO ? Promise.resolve(console.info("demo action", action)) : invoke<void>("run_action", { action })),
+  emptyRecycleBin: () => (DEMO ? wait(800).then(demoDashboard) : invoke<Dashboard>("empty_recycle_bin")),
+  runAction: (action: Action) =>
+    DEMO ? wait(400).then(() => null) : invoke<Dashboard | null>("run_action", { action }),
+  appVersion: () => (DEMO ? Promise.resolve("demo") : invoke<string>("app_version")),
 };
 
 export function onDashboard(cb: (d: Dashboard) => void) {
@@ -35,4 +39,38 @@ export function onEvent(name: string, cb: (payload: string) => void) {
   if (DEMO) return () => {};
   const p = listen<string>(name, (e) => cb(e.payload));
   return () => void p.then((un) => un());
+}
+
+// ---------------------------------------------------------------- auto-update
+
+export interface PendingUpdate {
+  version: string;
+  notes?: string;
+  install: (onProgress: (pct: number) => void) => Promise<void>;
+}
+
+/** Checks GitHub Releases for a newer signed build. Returns null when up to date. */
+export async function checkForUpdate(): Promise<PendingUpdate | null> {
+  if (DEMO) return null;
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const { relaunch } = await import("@tauri-apps/plugin-process");
+  const update = await check();
+  if (!update) return null;
+  return {
+    version: update.version,
+    notes: update.body ?? undefined,
+    install: async (onProgress) => {
+      let total = 0;
+      let done = 0;
+      await update.downloadAndInstall((ev) => {
+        if (ev.event === "Started") total = ev.data.contentLength ?? 0;
+        if (ev.event === "Progress") {
+          done += ev.data.chunkLength;
+          if (total) onProgress(Math.round((done / total) * 100));
+        }
+        if (ev.event === "Finished") onProgress(100);
+      });
+      await relaunch();
+    },
+  };
 }

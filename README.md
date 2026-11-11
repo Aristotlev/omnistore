@@ -1,97 +1,60 @@
 # OmniStore
 
-Every cloud plan, device and drive in one dashboard. Windows first, macOS and iOS from the same codebase (Tauri 2 + React + Rust).
+Every cloud plan, device and drive in one dashboard. Windows first, macOS and iOS from the same codebase (Tauri 2 + React + Rust). No accounts and no servers. Users never see setup or keys.
 
-## Run on Windows
+## Download
 
-Prerequisites (skip what you already have from OmniBoost):
+Latest installer: https://github.com/Aristotlev/omnistore/releases/latest
+
+Installed copies check for updates on launch and every 6 hours, then update in one click.
+
+## Publish a new version
+
+Double-click **Publish OmniStore.cmd**. It:
+
+1. bumps the version if the current one is already released
+2. commits, tags and pushes to GitHub
+3. GitHub's Windows servers build and sign the installer and publish the release with `latest.json`
+4. every installed OmniStore sees the update
+5. the new installer lands in `Desktop\OmniStore` and opens
+
+`release-keys\` holds the update signing key. It is git-ignored. Back it up: without it, installed copies cannot verify new updates.
+
+## How sign-in works
+
+| Account | What the user does | What OmniStore shows |
+|---|---|---|
+| Apple | Signs in once on Apple's own icloud.com page inside OmniStore (passkey QR with iPhone, iPhone approval, or password + code) | Plan, usage by category, over-quota status, Apple devices on the account |
+| Google | Clicks Continue with Google, picks their account in the browser (passkey or already signed in), clicks Continue | Storage plan, total, Drive, Drive trash, Gmail + Photos combined |
+
+## Device sync
+
+Each install writes a small snapshot to `iCloud Drive\OmniStore\Devices` (or OneDrive). The user's own sync app carries it to their other devices. No server.
+
+## Local development
 
 ```powershell
-winget install --id Rustlang.Rustup -e
-winget install --id OpenJS.NodeJS.LTS -e
-winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
-```
-
-Run:
-
-```powershell
-cd "$HOME\Documents\OmniStore"
 npm install
 npm run tauri dev
 ```
 
-Installer (`src-tauri\target\release\bundle\nsis\OmniStore_0.1.0_x64-setup.exe`):
-
-```powershell
-npm run tauri build
-```
-
-Browser preview with demo data (no Rust needed): `npm run dev` then open http://localhost:1420
-
-Rust tests: `cd src-tauri` then `cargo test`
-
-## How sign-in works
-
-| Account | What the user does | What OmniStore reads |
-|---|---|---|
-| Apple | Signs in on icloud.com inside an OmniStore window. Password and 2FA go to Apple only. | Plan, usage by category (Photos, Backups, Docs, Mail, Messages), quota status, Apple devices on the account |
-| Google | Signs in on Google's page in the default browser and approves access | Storage quota (total, Drive, trash, Gmail + Photos combined). A hidden app folder holds device snapshots for cross-device sync |
-
-Google blocks sign-in inside embedded webviews, so Google always uses the system browser. Apple has no consent screen for storage data, so OmniStore reads it from the icloud.com session the user created.
-
-## Google client ID (one time)
-
-1. console.cloud.google.com → new project `OmniStore`
-2. APIs & Services → Library → enable Google Drive API
-3. Google Auth Platform → Branding (app name, email) → Audience: External, add yourself as test user
-4. Data Access → add scope `https://www.googleapis.com/auth/drive.appdata` (non-sensitive, no verification)
-5. Clients → Create client → Desktop app → paste ID and secret in OmniStore Settings
-6. Audience → Publish app. Apps left in Testing lose their sign-in after 7 days. With only a non-sensitive scope, publishing needs no Google review.
-
-To ship without users pasting anything, build with:
-
-```powershell
-$env:OMNISTORE_GOOGLE_CLIENT_ID="xxxx.apps.googleusercontent.com"
-$env:OMNISTORE_GOOGLE_CLIENT_SECRET="GOCSPX-xxxx"
-npm run tauri build
-```
-
-## What the Windows build scans
-
-- Volumes (SSD/HDD, external), physical disks via `Get-PhysicalDisk` (media, bus, health)
-- iCloud Drive, iCloud Photos, Google Drive for desktop (cache), OneDrive, Dropbox: bytes on disk vs online-only placeholders
-- Recycle Bin, Temp, Windows.old, Downloads
-- iPhone/iPad backups stored on the PC (Apple Devices app and iTunes paths) with device name, iOS version, last backup date
-- Apple devices plugged in over USB
-- Largest files in the user folder (on demand)
+Browser preview with demo data: `npm run dev`, open http://localhost:1420. Rust tests: `cd src-tauri` then `cargo test`.
 
 ## Layout
 
 ```
 src/                     React dashboard (demo data when run outside Tauri)
 src-tauri/src/
-  lib.rs                 commands, state, refresh pipeline
-  local.rs               volumes, hardware, sync clients, reclaimable, iOS backups, USB devices
+  lib.rs                 commands, refresh pipeline, updater
+  local.rs               volumes, hardware, sync apps, Recycle Bin, iOS backups, USB devices, device sync
   scan.rs                placeholder-aware folder sizing, large files
   icloud.rs              icloud.com sign-in window + storage reader
-  google.rs              browser sign-in (PKCE loopback), quota, device sync
-  plans.rs               plan matching from plans.json
-  rules.rs               status, overage, forecast, optimisation findings
-  store.rs               settings/dashboard JSON, OS credential store
-src-tauri/resources/plans.json   EUR plan catalogue (iCloud verified, Google to verify)
+  plans.rs / rules.rs    plan matching, overage, forecast, recommendations
+  store.rs               settings and dashboard cache
+src-tauri/resources/plans.json   EUR plan catalogue
+ci/release.yml           GitHub build + release workflow (copied to .github/workflows by publish.ps1)
 ```
 
-Data lives in `%APPDATA%\app.omnistore`. The Google token lives in Windows Credential Manager.
+## Google sign-in registration
 
-## Next: macOS and iOS
-
-macOS: on the MacBook, same commands. `local.rs` already handles `~/Library/CloudStorage`, iCloud Drive, dataless files, `system_profiler` and local iPhone backups.
-
-iOS/iPadOS (on the Mac with Xcode):
-
-```bash
-npm run tauri ios init
-npm run tauri ios dev
-```
-
-iOS work still to do: Google sign-in through a custom URL scheme (loopback is not allowed on mobile), iCloud sign-in in the single mobile webview, and a Swift plugin for device capacity and Photos library analysis.
+Registered in Google Cloud project `omnistore-514414` (Google Auth Platform, Desktop client "OmniStore Windows", scope `drive.appdata`, non-sensitive). The client ID and secret live in `release-keys\google.json` (git-ignored) and in GitHub Actions secrets, and are baked into release builds. Website for the consent screen: https://aristotlev.github.io/omnistore/ (served from `docs/`).
