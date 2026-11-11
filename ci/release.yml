@@ -26,6 +26,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          OMNISTORE_GOOGLE_CLIENT_ID: ${{ secrets.OMNISTORE_GOOGLE_CLIENT_ID }}
+          OMNISTORE_GOOGLE_CLIENT_SECRET: ${{ secrets.OMNISTORE_GOOGLE_CLIENT_SECRET }}
         with:
           tagName: v__VERSION__
           releaseName: OmniStore v__VERSION__

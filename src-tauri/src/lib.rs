@@ -21,6 +21,7 @@ fn commit(app: &AppHandle) -> Dashboard {
     {
         let mut d = state.dashboard.lock().unwrap();
         d.updated_at = Some(local::now());
+        dedupe_devices(&mut d);
         rules::recompute(&mut d);
     }
     state.record_history();
@@ -28,6 +29,27 @@ fn commit(app: &AppHandle) -> Dashboard {
     let d = state.dashboard.lock().unwrap().clone();
     let _ = app.emit("dashboard://updated", &d);
     d
+}
+
+/// The same device can arrive through Google sync and the iCloud Drive / OneDrive folder.
+/// Keep one entry per device id (the newest), and never list this device twice.
+fn dedupe_devices(d: &mut Dashboard) {
+    let me = d.this_device.as_ref().map(|t| t.id.clone());
+    let mut best: std::collections::HashMap<String, DeviceSnapshot> = std::collections::HashMap::new();
+    for dev in d.devices.drain(..) {
+        if Some(&dev.id) == me.as_ref() {
+            continue;
+        }
+        match best.get(&dev.id) {
+            Some(old) if old.updated_at >= dev.updated_at => {}
+            _ => {
+                best.insert(dev.id.clone(), dev);
+            }
+        }
+    }
+    let mut list: Vec<DeviceSnapshot> = best.into_values().collect();
+    list.sort_by(|a, b| b.total_bytes.cmp(&a.total_bytes).then(a.name.cmp(&b.name)));
+    d.devices = list;
 }
 
 fn merge_devices(d: &mut Dashboard, source: &str, incoming: Vec<DeviceSnapshot>) {
@@ -146,7 +168,15 @@ async fn icloud_disconnect(app: AppHandle) -> Res<Dashboard> {
 async fn google_pull(app: &AppHandle) -> Res<()> {
     let token = google::access_token().await?;
     let account = google::fetch_account(&token).await?;
-    app.state::<AppState>().dashboard.lock().unwrap().google = Some(account);
+    let this = app.state::<AppState>().dashboard.lock().unwrap().this_device.clone();
+    let others = match this {
+        Some(t) => google::sync_devices(&token, &t).await.unwrap_or_default(),
+        None => vec![],
+    };
+    let state = app.state::<AppState>();
+    let mut d = state.dashboard.lock().unwrap();
+    d.google = Some(account);
+    merge_devices(&mut d, "Google sync", others);
     Ok(())
 }
 
@@ -178,7 +208,11 @@ async fn google_refresh(app: AppHandle) -> Res<Dashboard> {
 fn google_disconnect(app: AppHandle) -> Dashboard {
     google::disconnect();
     let state = app.state::<AppState>();
-    state.dashboard.lock().unwrap().google = None;
+    {
+        let mut d = state.dashboard.lock().unwrap();
+        d.google = None;
+        merge_devices(&mut d, "Google sync", vec![]);
+    }
     state.settings.lock().unwrap().google_email = None;
     state.save_settings();
     commit(&app)

@@ -231,6 +231,70 @@ pub fn parse_account(a: &Value) -> CloudAccount {
     }
 }
 
+const FILES_URL: &str = "https://www.googleapis.com/drive/v3/files";
+const UPLOAD_URL: &str = "https://www.googleapis.com/upload/drive/v3/files";
+
+/// Every OmniStore signed in to the same Google account keeps a small device snapshot in
+/// OmniStore's hidden app folder in Google Drive (invisible in Drive, only OmniStore can read it).
+/// Uploads this device and returns all the others.
+pub async fn sync_devices(token: &str, this: &DeviceSnapshot) -> Result<Vec<DeviceSnapshot>, String> {
+    let c = http();
+    let list: Value = c
+        .get(FILES_URL)
+        .query(&[("spaces", "appDataFolder"), ("fields", "files(id,name)"), ("pageSize", "200")])
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let files = list["files"].as_array().cloned().unwrap_or_default();
+    let mine = format!("device-{}.json", this.id);
+    let body = serde_json::to_vec(this).map_err(|e| e.to_string())?;
+
+    let file_id = match files.iter().find(|f| f["name"].as_str() == Some(mine.as_str())).and_then(|f| f["id"].as_str()) {
+        Some(id) => id.to_string(),
+        None => {
+            let created: Value = c
+                .post(FILES_URL)
+                .bearer_auth(token)
+                .json(&serde_json::json!({ "name": mine, "parents": ["appDataFolder"], "mimeType": "application/json" }))
+                .send()
+                .await
+                .map_err(|e| e.to_string())?
+                .json()
+                .await
+                .map_err(|e| e.to_string())?;
+            created["id"].as_str().ok_or("Could not save this device to Google")?.to_string()
+        }
+    };
+    c.patch(format!("{UPLOAD_URL}/{file_id}"))
+        .query(&[("uploadType", "media")])
+        .bearer_auth(token)
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut others = vec![];
+    for f in &files {
+        let name = f["name"].as_str().unwrap_or("");
+        if !name.starts_with("device-") || name == mine {
+            continue;
+        }
+        let Some(id) = f["id"].as_str() else { continue };
+        if let Ok(resp) = c.get(format!("{FILES_URL}/{id}")).query(&[("alt", "media")]).bearer_auth(token).send().await {
+            if let Ok(mut d) = resp.json::<DeviceSnapshot>().await {
+                d.source = "Google sync".into();
+                others.push(d);
+            }
+        }
+    }
+    Ok(others)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -75,6 +75,9 @@ if (Test-Path $googleFile) {
   gh secret set OMNISTORE_GOOGLE_CLIENT_ID -R $repo --body $g.client_id
   gh secret set OMNISTORE_GOOGLE_CLIENT_SECRET -R $repo --body $g.client_secret
 }
+$secrets = (gh secret list -R $repo | Out-String)
+if ($secrets -notmatch 'OMNISTORE_GOOGLE_CLIENT_ID') { Fail 'Google sign-in keys are not saved on GitHub' }
+Log 'Signing key and Google sign-in keys saved on GitHub.'
 
 # Version: bump the patch number if this version was already released.
 $pkgPath = Join-Path $PSScriptRoot 'package.json'

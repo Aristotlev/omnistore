@@ -58,9 +58,17 @@ export default function Devices({ c }: { c: Ctx }) {
 
       <div className="banner mt">
         <span>
-          {d.syncFolder
-            ? <>Devices share their storage through <b>{d.syncFolder}</b>. Install OmniStore on your other devices and they appear here.</>
-            : <>Install iCloud for Windows or OneDrive so OmniStore on your other devices can share storage through it.</>}
+          {d.google || d.syncFolder ? (
+            <>
+              Every device with OmniStore shows up here
+              {d.google && <> when it is signed in to <b>{d.google.accountLabel}</b></>}
+              {d.google && d.syncFolder && " or"}
+              {d.syncFolder && <> when it syncs <b>{d.syncFolder}</b></>}.
+              {d.icloud && " Apple devices on your Apple Account are listed too."}
+            </>
+          ) : (
+            <>Continue with Google or sign in to iCloud so every device with OmniStore shows up here.</>
+          )}
         </span>
       </div>
 
