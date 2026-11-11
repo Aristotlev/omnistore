@@ -27,7 +27,7 @@ function AccountDetail(p: { c: Ctx; a: CloudAccount; name: string; color: string
       <table className="mt2">
         <tbody>
           <tr><td className="muted">Plan</td><td className="r strong">{a.plan.name}</td></tr>
-          <tr><td className="muted">Price</td><td className="r">{eur(a.plan.monthlyEur)}/mo {!a.plan.priceVerified && <span className="pill warn">estimate</span>}</td></tr>
+          <tr><td className="muted">Price</td><td className="r">{a.plan.id.endsWith("-custom") ? <span className="muted">Not a public plan (family, bundle or promo)</span> : <>{eur(a.plan.monthlyEur)}/mo {!a.plan.priceVerified && <span className="pill warn">estimate</span>}</>}</td></tr>
           <tr><td className="muted">Free space</td><td className="r num">{bytes(Math.max(0, a.limit - a.used))}</td></tr>
           <tr><td className="muted">Over plan by</td><td className="r num" style={{ color: a.overBy ? "var(--bad)" : undefined }}>{a.overBy ? bytes(a.overBy) : "Not over"}</td></tr>
           {a.familyShared && <tr><td className="muted">Family Sharing</td><td className="r">Shared plan</td></tr>}

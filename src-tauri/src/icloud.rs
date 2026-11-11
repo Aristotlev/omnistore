@@ -167,7 +167,7 @@ pub fn parse_account(p: &Value) -> CloudAccount {
     let commerce = u(&info["commerceStorageInBytes"]);
     let comp = u(&info["compStorageInBytes"]);
 
-    let breakdown = s["storageUsageByMedia"]
+    let breakdown: Vec<UsageSlice> = s["storageUsageByMedia"]
         .as_array()
         .map(|a| {
             a.iter()
@@ -181,6 +181,11 @@ pub fn parse_account(p: &Value) -> CloudAccount {
                 .collect()
         })
         .unwrap_or_default();
+
+    // When an account is over quota (for example after an iCloud+ plan lapsed), Apple caps
+    // usedStorageInBytes at the quota while the per-category numbers stay real. Use the larger.
+    let by_media: u64 = breakdown.iter().map(|b: &UsageSlice| b.bytes).sum();
+    let used = used.max(by_media);
 
     let plan = match plan_limit_bytes(&p["plan"]) {
         Some(bytes) => {
@@ -271,5 +276,22 @@ mod tests {
         assert_eq!(a.status, "over");
         assert_eq!(a.breakdown[0].color.as_deref(), Some("#ff9500"));
         assert_eq!(parse_devices(&p)[0].kind, "ios");
+    }
+
+    #[test]
+    fn over_quota_uses_category_totals() {
+        let p: Value = serde_json::from_str(
+            r#"{"status":"ok","account":{"appleId":"a@b.c"},
+            "storage":{"storageUsageInfo":{"usedStorageInBytes":5368709120,"totalStorageInBytes":5368709120,"commerceStorageInBytes":0,"compStorageInBytes":5368709120},
+            "quotaStatus":{"overQuota":true},
+            "storageUsageByMedia":[{"mediaKey":"photos","usageInBytes":57100000000},{"mediaKey":"backup","usageInBytes":19000000000},{"mediaKey":"docs","usageInBytes":138100000000}]},
+            "plan":{"__error":403}}"#,
+        )
+        .unwrap();
+        let a = parse_account(&p);
+        assert_eq!(a.plan.id, "icloud-free");
+        assert_eq!(a.used, 214_200_000_000);
+        assert_eq!(a.status, "over");
+        assert!(a.over_by > 208_000_000_000);
     }
 }

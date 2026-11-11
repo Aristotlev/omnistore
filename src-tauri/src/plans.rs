@@ -82,14 +82,20 @@ pub fn match_by_quota(p: Provider, quota_bytes: u64) -> PlanMatch {
             da.partial_cmp(&db).unwrap()
         })
         .expect("catalogue has tiers");
-    let mut m = best.to_match(false);
-    // Family / custom quotas that do not land near a tier keep the real size.
     let drift = (q / best.bytes() as f64).ln().abs();
     if drift > 0.25 {
-        m.name = format!("{} (custom quota {:.0} GB)", m.name, q / GIB);
-        m.bytes = quota_bytes;
+        // Family, promo or bundle quotas that match no public tier: show the real size and
+        // do not guess a price.
+        return PlanMatch {
+            id: format!("{}-custom", match p { Provider::Icloud => "icloud", Provider::Google => "google" }),
+            name: format!("{} {:.0} GB plan", provider(p).name, q / GIB),
+            bytes: quota_bytes,
+            monthly_eur: 0.0,
+            price_verified: false,
+            exact: false,
+        };
     }
-    m
+    best.to_match(false)
 }
 
 /// Cheapest storage tier that holds `need_bytes` with `headroom` (e.g. 1.15 = 15%).
@@ -116,6 +122,12 @@ mod tests {
     #[test]
     fn matches_icloud_200() {
         assert_eq!(match_by_quota(Provider::Icloud, 214_748_364_800).id, "icloud-200");
+    }
+    #[test]
+    fn custom_quota_has_no_price() {
+        let m = match_by_quota(Provider::Google, 429_496_729_600);
+        assert_eq!(m.id, "google-custom");
+        assert_eq!(m.monthly_eur, 0.0);
     }
     #[test]
     fn cheapest_fit_works() {

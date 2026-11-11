@@ -31,7 +31,7 @@ function AccountCard(p: { a?: CloudAccount | null; name: string; color: string; 
           <div className="title ellipsis">{a.plan.name}</div>
           <div className="muted num">{bytes(a.used)} of {bytes(a.limit)}</div>
           <div className="muted small">
-            {eur(a.plan.monthlyEur)}/mo
+            {a.plan.id.endsWith("-custom") ? "Custom plan" : `${eur(a.plan.monthlyEur)}/mo`}
             {a.overBy > 0 && <span style={{ color: "var(--bad)" }}> · over by {bytes(a.overBy)}</span>}
           </div>
         </div>

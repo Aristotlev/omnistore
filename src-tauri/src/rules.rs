@@ -105,7 +105,7 @@ pub fn recompute(d: &mut Dashboard) {
             f.push(Finding {
                 id: format!("{p:?}-over"),
                 severity: "critical".into(),
-                title: format!("{name} is over its plan by {}", fmt_bytes(acc.over_by)),
+                title: if acc.over_by > 0 { format!("{name} is over its plan by {}", fmt_bytes(acc.over_by)) } else { format!("{name} is full") },
                 detail,
                 bytes: acc.over_by,
                 monthly_eur: 0.0,

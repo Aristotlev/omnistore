@@ -4,7 +4,7 @@
   "updated": "2026-11-11",
   "providers": {
     "icloud": {
-      "name": "iCloud+",
+      "name": "iCloud",
       "manageUrl": "https://www.icloud.com/settings/",
       "source": "https://support.apple.com/en-gr/108047 (Euro row, published 2026-09-16)",
       "tiers": [
