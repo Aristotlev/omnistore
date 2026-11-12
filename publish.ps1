@@ -60,6 +60,9 @@ if ($vis -ne 'PUBLIC') {
   if ($LASTEXITCODE -ne 0) { gh api -X PATCH "repos/$repo" -f visibility=public | Out-Null }
 }
 
+# What people see on the GitHub page.
+gh repo edit $repo --description 'All your storage in one place: iCloud and Google plans, what fills them, and every PC, Mac, iPhone and iPad. Windows and Mac.' --homepage 'https://aristotlev.github.io/omnistore/' --add-topic storage --add-topic icloud --add-topic google-drive --add-topic dashboard --add-topic windows --add-topic macos *> $null
+
 # Signing key for updates (stays on this PC and in GitHub's encrypted secrets).
 $keyFile = Join-Path $PSScriptRoot 'release-keys\updater.key'
 $pwFile = Join-Path $PSScriptRoot 'release-keys\updater.password'
@@ -126,8 +129,11 @@ New-Item -ItemType Directory -Force $dest | Out-Null
 gh release download "v$version" -R $repo -p '*-setup.exe' -D $dest --clobber
 $setup = Get-ChildItem $dest -Filter "*$version*-setup.exe" | Select-Object -First 1
 if (-not $setup) { Fail 'Windows installer not found in the release. Details in build-error.txt' }
-$dmg = gh release view "v$version" -R $repo --json assets --jq '.assets[].name' | Select-String '\.dmg$'
-if ($dmg) { Log "Mac download: https://github.com/$repo/releases/download/v$version/$dmg" } else { Log 'Mac build not in this release (see build-error.txt)' }
+$assets = (gh release view "v$version" -R $repo --json assets --jq '.assets[].name' | Out-String)
+foreach ($n in 'OmniStore-Windows.exe', 'OmniStore-Mac.dmg') {
+  if ($assets -match [regex]::Escape($n)) { Log "Download link: https://github.com/$repo/releases/latest/download/$n" }
+  else { Log "$n is missing from this release (see build-error.txt)" }
+}
 Log "Released v$version. Download page for users: https://github.com/$repo/releases/latest"
 
 # Update the copy installed on this PC: close it, install silently, reopen it.

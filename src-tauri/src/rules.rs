@@ -77,6 +77,12 @@ fn slice(a: &CloudAccount, key: &str) -> u64 {
     a.breakdown.iter().filter(|s| s.key == key).map(|s| s.bytes).sum()
 }
 
+/// Bytes sitting in iCloud Photos and iCloud Drive "Recently Deleted".
+fn recently_deleted(a: &CloudAccount) -> u64 {
+    a.insights.iter().flat_map(|g| g.rows.iter().filter(move |r| (g.key == "photos_types" && r.key == "deleted") || (g.key == "drive" && r.key == "trash")))
+        .map(|r| r.bytes).sum()
+}
+
 pub fn recompute(d: &mut Dashboard) {
     let mut f: Vec<Finding> = vec![];
     let mut plan_savings: Vec<f64> = vec![];
@@ -157,12 +163,62 @@ pub fn recompute(d: &mut Dashboard) {
             f.push(Finding {
                 id: format!("{p:?}-trash"),
                 severity: "warn".into(),
-                title: format!("Empty Google Drive trash ({})", fmt_bytes(acc.trash_bytes)),
+                title: format!("Empty {} trash ({})", if p == Provider::Google { "Google Drive" } else { "iCloud Drive" }, fmt_bytes(acc.trash_bytes)),
                 detail: "Trashed files still count against your Google storage.".into(),
                 bytes: acc.trash_bytes,
                 monthly_eur: 0.0,
                 action: act("Open trash", "open_url", Some("https://drive.google.com/drive/trash".into())),
             });
+        }
+
+        // What the photo library and iCloud Drive scans found.
+        let row = |group: &str, key: &str| acc.insights.iter().find(|g| g.key == group)
+            .and_then(|g| g.rows.iter().find(|r| r.key == key)).map(|r| (r.bytes, r.count.unwrap_or(0)));
+        if p == Provider::Icloud {
+            if let Some((b, n)) = row("photos_types", "deleted").filter(|(b, _)| *b > 300_000_000) {
+                f.push(Finding {
+                    id: "icloud-photos-deleted".into(),
+                    severity: "warn".into(),
+                    title: format!("Recently Deleted photos still use {}", fmt_bytes(b)),
+                    detail: format!("{n} deleted photos and videos count against iCloud for 30 days. Empty Recently Deleted in Photos to get the space back now."),
+                    bytes: b,
+                    monthly_eur: 0.0,
+                    action: act("Open iCloud Photos", "open_url", Some("https://www.icloud.com/photos/".into())),
+                });
+            }
+            if let Some((b, n)) = row("drive", "trash").filter(|(b, _)| *b > 200_000_000) {
+                f.push(Finding {
+                    id: "icloud-drive-deleted".into(),
+                    severity: "warn".into(),
+                    title: format!("Recently Deleted in iCloud Drive uses {}", fmt_bytes(b)),
+                    detail: format!("{n} deleted items still count against iCloud. They are removed after 30 days, or now if you empty Recently Deleted."),
+                    bytes: b,
+                    monthly_eur: 0.0,
+                    action: act("Open iCloud Drive", "open_url", Some("https://www.icloud.com/iclouddrive/".into())),
+                });
+            }
+            if let Some((b, n)) = row("photos_types", "screenshots").filter(|(b, _)| *b > 2 * GB) {
+                f.push(Finding {
+                    id: "icloud-screenshots".into(),
+                    severity: "info".into(),
+                    title: format!("{n} screenshots use {} of iCloud", fmt_bytes(b)),
+                    detail: "In Photos, open Collections > Media Types > Screenshots to review and delete the ones you no longer need.".into(),
+                    bytes: b,
+                    monthly_eur: 0.0,
+                    action: act("Open iCloud Photos", "open_url", Some("https://www.icloud.com/photos/".into())),
+                });
+            }
+            if let Some((b, n)) = row("photos_types", "videos").filter(|(b, _)| acc.used > 0 && *b > 10 * GB && *b as f64 / acc.used as f64 > 0.3) {
+                f.push(Finding {
+                    id: "icloud-videos".into(),
+                    severity: "info".into(),
+                    title: format!("Videos are {:.0}% of your iCloud ({})", b as f64 * 100.0 / acc.used as f64, fmt_bytes(b)),
+                    detail: format!("{n} videos. Moving old or long videos to a computer or external drive frees the most space per item."),
+                    bytes: b,
+                    monthly_eur: 0.0,
+                    action: act("Open iCloud Photos", "open_url", Some("https://www.icloud.com/photos/".into())),
+                });
+            }
         }
 
         let backups = slice(acc, "backup");
@@ -360,7 +416,7 @@ pub fn recompute(d: &mut Dashboard) {
         local_used: lu,
         local_capacity: lc,
         monthly_spend_eur: clouds.iter().map(|c| c.plan.monthly_eur).sum(),
-        reclaimable_bytes: reclaim_total + clouds.iter().map(|c| c.trash_bytes).sum::<u64>(),
+        reclaimable_bytes: reclaim_total + clouds.iter().map(|c| c.trash_bytes + recently_deleted(c)).sum::<u64>(),
         // downgrade and consolidation are alternatives: count the best one
         potential_savings_eur: plan_savings.iter().cloned().fold(0.0, f64::max),
     };
@@ -385,6 +441,7 @@ mod tests {
             family_shared: false,
             fetched_at: String::new(),
             note: None,
+            insights: vec![],
         }
     }
 

@@ -1,8 +1,8 @@
-import { Cloud, LogOut, RefreshCw, ExternalLink, ShieldCheck, KeyRound, FolderOpen } from "lucide-react";
+import { Cloud, LogOut, RefreshCw, ExternalLink, ShieldCheck, KeyRound, FolderOpen, Images, AppWindow, Folder } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Card, Legend, Spinner, StackedBar, StatusPill } from "../components";
 import { ago, bytes, eur, pct } from "../format";
-import type { CloudAccount } from "../types";
+import type { CloudAccount, InsightGroup } from "../types";
 import type { Ctx } from "../ctx";
 import { api } from "../api";
 
@@ -36,6 +36,64 @@ function AccountDetail(p: { c: Ctx; a: CloudAccount; name: string; color: string
       <div className="row mt">
         <button className="btn" onClick={() => c.act({ label: "", kind: "open_url", target: p.manageUrl })}><ExternalLink size={14} />Manage plan</button>
         <button className="btn ghost danger" onClick={() => c.task(`${p.busyKey}-out`, p.signOut)}><LogOut size={14} />Sign out</button>
+      </div>
+    </Card>
+  );
+}
+
+const ROW_COLORS: Record<string, string> = {
+  photos: "#ffb547", live: "#ffd28a", videos: "#ff5c7a", screenshots: "#b28cff", edits: "#64d2ff",
+  hidden: "#9aa3bd", deleted: "#ff8a5c", trash: "#ff8a5c", more: "#9aa3bd", other: "#9aa3bd",
+  unknown: "#6b7390", hidden_app_data: "#6b7390",
+};
+const GROUP_ICON: Record<string, typeof Images> = { photos_types: Images, photos_apps: AppWindow, drive: Folder };
+const num = (n: number) => n.toLocaleString();
+
+function InsightBlock({ g }: { g: InsightGroup }) {
+  const Icon = GROUP_ICON[g.key] ?? Folder;
+  const sized = g.rows.some((r) => r.bytes > 0);
+  const max = Math.max(1, ...g.rows.map((r) => (sized ? r.bytes : r.count ?? 0)));
+  return (
+    <div className="insight">
+      <div className="insight-head">
+        <Icon size={15} />
+        <span className="strong">{g.title}</span>
+        <span className="muted small num grow">
+          {g.totalBytes > 0 && bytes(g.totalBytes)}
+          {g.totalBytes > 0 && g.totalCount > 0 && " · "}
+          {g.totalCount > 0 && `${num(g.totalCount)} ${g.key === "drive" ? "files" : "items"}`}
+        </span>
+        {g.progress ? <span className="pill info"><Spinner size={11} />{g.progress}</span>
+          : g.estimated && sized ? <span className="pill warn">estimate</span> : null}
+      </div>
+      <div className="insight-rows">
+        {g.rows.map((r) => {
+          const v = sized ? r.bytes : r.count ?? 0;
+          return (
+            <div key={r.key} className="insight-row">
+              <span className="ellipsis" title={r.label}>{r.label}</span>
+              <div className="insight-bar"><i style={{ width: `${Math.max(1.5, (v / max) * 100)}%`, background: ROW_COLORS[r.key] ?? "var(--primary)" }} /></div>
+              <span className="muted small num r">{r.count ? num(r.count) : ""}</span>
+              <span className="num r strong">{r.bytes ? bytes(r.bytes) : "—"}</span>
+            </div>
+          );
+        })}
+      </div>
+      {g.note && <p className="muted small" style={{ margin: "8px 0 0" }}>{g.note}</p>}
+      {!sized && g.key === "photos_types" && !g.progress && <p className="muted small" style={{ margin: "8px 0 0" }}>Sizes are measured on the next refresh.</p>}
+    </div>
+  );
+}
+
+function Insights({ a, name }: { a: CloudAccount; name: string }) {
+  const groups = a.insights ?? [];
+  if (!groups.length) return null;
+  const scanning = groups.some((g) => g.progress);
+  return (
+    <Card title={`What fills ${name}`} icon={<Images size={16} />} className="mt"
+      sub={scanning ? "Measuring your photo library in the background. You can keep using OmniStore." : "Read from your account. Nothing to install on your iPhone, iPad or Mac."}>
+      <div className="insights">
+        {groups.map((g) => <InsightBlock key={g.key} g={g} />)}
       </div>
     </Card>
   );
@@ -95,6 +153,8 @@ export default function Clouds({ c }: { c: Ctx }) {
           </Card>
         )}
       </div>
+
+      {d.icloud && <Insights a={d.icloud} name="iCloud" />}
 
       <Card title="Cloud apps on this PC" icon={<Cloud size={16} />} sub="What each app keeps downloaded" className="mt">
         {apps.length ? (

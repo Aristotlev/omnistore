@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Archive, Cable, Cloud, Image, Info, LayoutGrid, Smartphone } from "lucide-react";
+import { Archive, Cable, Cloud, Image, LayoutGrid, Smartphone } from "lucide-react";
 import { Card, DeviceIcon, Legend, StackedBar } from "../components";
 import { ago, bytes } from "../format";
 import type { DeviceSnapshot, UsageSlice } from "../types";
@@ -37,7 +37,7 @@ function DeviceTile({ x, active, onClick }: { x: DeviceSnapshot; active: boolean
             </div>
           </>
         ) : (
-          <div className="muted small">{x.kind === "macos" ? "Install OmniStore on this Mac to read its storage." : x.kind === "ios" || x.kind === "ipados" ? "Plug it into this PC once to read its storage." : "Listed on your Apple Account."}</div>
+          <div className="muted small">{x.kind === "macos" ? "Install OmniStore on this Mac to read its storage." : x.kind === "ios" || x.kind === "ipados" ? "Listed on your Apple Account. Its iCloud content is on the Clouds tab." : "Listed on your Apple Account."}</div>
         )}
         <div className="row small" style={{ justifyContent: "space-between" }}>
           <span className="muted">{x.connection ? `${x.connection} · ` : ""}{ago(x.updatedAt)}</span>
@@ -142,15 +142,18 @@ export default function Devices({ c }: { c: Ctx }) {
 
   return (
     <>
-      {status === "no_service" && (
+      {d.icloud?.insights?.length ? (
         <div className="banner">
-          <Info size={16} />
-          <span>To read iPhone and iPad storage with nothing installed on them, add Apple's free <b>Apple Devices</b> app to this PC, plug your iPhone in once and tap Trust.</span>
-          <button className="btn primary" style={{ marginLeft: "auto" }} onClick={() => c.act({ label: "", kind: "open_url", target: "ms-windows-store://search/?query=Apple%20Devices" })}>Get Apple Devices</button>
+          <Cloud size={16} />
+          <span>What your iPhone, iPad and Mac put in iCloud (photos, videos, screenshots, the apps that saved them, iCloud Drive folders) is read from your Apple Account. Nothing to install, no cable.</span>
+          <button className="btn primary" style={{ marginLeft: "auto" }} onClick={() => c.go("clouds")}>What fills iCloud</button>
         </div>
-      )}
-      {status === "none" && phones.length === 0 && (
-        <div className="banner"><Cable size={16} /><span>Plug in your iPhone or iPad and tap Trust. To read it without the cable next time, turn on <b>Show this iPhone when on Wi-Fi</b> in Apple Devices.</span></div>
+      ) : !d.icloud && (
+        <div className="banner">
+          <Cloud size={16} />
+          <span>Sign in to iCloud to see every Apple device on your account and what it stores in iCloud. Nothing to install on them.</span>
+          <button className="btn primary" style={{ marginLeft: "auto" }} onClick={() => c.go("clouds")}>Sign in to iCloud</button>
+        </div>
       )}
       {errs.map((e) => <div key={e} className="banner err">{e}</div>)}
 
@@ -159,6 +162,15 @@ export default function Devices({ c }: { c: Ctx }) {
       </div>
 
       {selected && <Detail x={selected} c={c} />}
+
+      {phones.length === 0 && (status === "no_service" || status === "none") && (
+        <p className="muted small mt">
+          <Cable size={13} style={{ verticalAlign: -2 }} /> Optional: Apple only shares an iPhone's free space and per-app sizes with a computer it trusts.
+          {status === "no_service"
+            ? <> Add Apple's free <button className="linkish" onClick={() => c.act({ label: "", kind: "open_url", target: "ms-windows-store://search/?query=Apple%20Devices" })}>Apple Devices</button> app and connect the iPhone once; after that it can be read over Wi-Fi.</>
+            : <> Connect it once and tap Trust, then turn on <b>Show this iPhone when on Wi-Fi</b> in Apple Devices to read it without a cable.</>}
+        </p>
+      )}
 
       <Card title="iPhone and iPad backups on this PC" icon={<Archive size={16} />} sub={`${backups.length} found`} className="mt">
         {backups.length ? (

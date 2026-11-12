@@ -228,6 +228,7 @@ pub fn parse_account(a: &Value) -> CloudAccount {
         family_shared: false,
         fetched_at: crate::local::now(),
         note: Some("Google reports Gmail and Photos as one combined figure.".into()),
+        insights: vec![],
     }
 }
 

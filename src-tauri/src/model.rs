@@ -48,6 +48,36 @@ pub struct CloudAccount {
     pub family_shared: bool,
     pub fetched_at: String,
     pub note: Option<String>,
+    /// Deeper look at what fills the account: photo library by type, saved-by-app, Drive folders.
+    #[serde(default)]
+    pub insights: Vec<InsightGroup>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct InsightGroup {
+    /// photos_types | photos_apps | drive
+    pub key: String,
+    pub title: String,
+    pub note: Option<String>,
+    pub rows: Vec<InsightRow>,
+    pub total_bytes: u64,
+    pub total_count: u64,
+    /// true while a scan is running or when it stopped early
+    pub estimated: bool,
+    pub progress: Option<String>,
+    /// Apple's own item count when the scan ran. Lets the next refresh skip an unchanged library.
+    pub index_count: u64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct InsightRow {
+    pub key: String,
+    pub label: String,
+    pub bytes: u64,
+    pub count: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

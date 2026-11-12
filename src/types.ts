@@ -18,7 +18,24 @@ export interface CloudAccount {
   familyShared: boolean;
   fetchedAt: string;
   note?: string | null;
+  insights?: InsightGroup[];
 }
+
+/** photos_types | photos_apps | drive */
+export interface InsightGroup {
+  key: string;
+  title: string;
+  note?: string | null;
+  rows: InsightRow[];
+  totalBytes: number;
+  totalCount: number;
+  estimated: boolean;
+  progress?: string | null;
+  indexCount: number;
+  updatedAt: string;
+}
+
+export interface InsightRow { key: string; label: string; bytes: number; count?: number | null }
 
 export interface Volume { name: string; mount: string; fileSystem: string; totalBytes: number; freeBytes: number; kind: string; removable: boolean }
 

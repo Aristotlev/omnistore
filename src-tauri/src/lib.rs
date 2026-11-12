@@ -58,16 +58,55 @@ fn merge_devices(d: &mut Dashboard, source: &str, incoming: Vec<DeviceSnapshot>)
     d.devices.extend(incoming);
 }
 
+/// Photo-library groups come from a slower background scan. When a refresh skips that scan
+/// (library unchanged), keep the previous groups instead of dropping them.
+const PHOTO_GROUPS: [&str; 2] = ["photos_types", "photos_apps"];
+
 /// Called by the iCloud window once icloud.com hands back the storage report.
-pub(crate) fn apply_icloud(app: &AppHandle, account: CloudAccount, devices: Vec<DeviceSnapshot>) {
+pub(crate) fn apply_icloud(app: &AppHandle, mut account: CloudAccount, devices: Vec<DeviceSnapshot>, reuse_photo_scan: bool) {
     let state = app.state::<AppState>();
     {
         let mut d = state.dashboard.lock().unwrap();
+        if let Some(prev) = d.icloud.as_ref() {
+            for key in PHOTO_GROUPS {
+                let Some(old) = prev.insights.iter().find(|g| g.key == key) else { continue };
+                let fresh = account.insights.iter().find(|g| g.key == key);
+                // Keep the measured sizes from the last scan when this refresh did not rescan,
+                // or until the new scan reports its first results.
+                let keep = reuse_photo_scan || fresh.is_none() || (key == "photos_apps");
+                if !keep || old.total_bytes == 0 { continue; }
+                let mut old = old.clone();
+                if let Some(f) = fresh { if f.total_count > 0 { old.total_count = f.total_count; } }
+                account.insights.retain(|g| g.key != key);
+                account.insights.push(old);
+            }
+        }
+        sort_insights(&mut account.insights);
         d.icloud = Some(account);
         merge_devices(&mut d, "iCloud account", devices);
     }
     state.settings.lock().unwrap().icloud_connected = true;
     state.save_settings();
+    commit(app);
+}
+
+fn sort_insights(groups: &mut [InsightGroup]) {
+    let rank = |k: &str| match k { "photos_types" => 0, "photos_apps" => 1, "drive" => 2, _ => 3 };
+    groups.sort_by_key(|g| rank(&g.key));
+}
+
+/// Progress and final results of the background Photos scan.
+pub(crate) fn apply_icloud_photos(app: &AppHandle, groups: Vec<InsightGroup>) {
+    let state = app.state::<AppState>();
+    {
+        let mut d = state.dashboard.lock().unwrap();
+        let Some(account) = d.icloud.as_mut() else { return };
+        for g in groups {
+            account.insights.retain(|x| x.key != g.key);
+            account.insights.push(g);
+        }
+        sort_insights(&mut account.insights);
+    }
     commit(app);
 }
 
